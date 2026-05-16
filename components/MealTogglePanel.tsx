@@ -17,19 +17,19 @@ export default function MealTogglePanel({ status, onToggle }: Props) {
   const anyOverlap = items.some((i) => status[i.slot].overlap);
 
   return (
-    <div className="rounded-2xl border border-rosie-100 bg-rosie-50/50 p-4">
+    <div className="border-l-2 border-rosie-500 bg-cream-100/50 p-5">
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-xs uppercase tracking-[0.2em] text-rosie-600">Meal slots</div>
-          <div className="mt-1 text-sm text-charcoal-500">
+          <div className="text-[10px] uppercase tracking-[0.35em] text-rosie-500">Meal slots</div>
+          <div className="mt-2 font-serif text-sm italic text-charcoal-600">
             {anyOverlap
-              ? 'Your window overlaps a meal time — toggle off if you’ve already eaten.'
+              ? 'Your window overlaps a meal time — toggle off if you have already dined.'
               : 'No meal overlap detected in this time window.'}
           </div>
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap gap-2">
         {items.map((i) => {
           const s = status[i.slot];
           const active = s.included;
@@ -39,21 +39,19 @@ export default function MealTogglePanel({ status, onToggle }: Props) {
               key={i.slot}
               type="button"
               onClick={() => onToggle(i.slot)}
-              className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition ${
+              className={`flex items-center gap-2 border px-3 py-1.5 text-[10px] uppercase tracking-[0.25em] transition ${
                 active
-                  ? 'border-rosie-300 bg-white text-rosie-700 shadow-sm'
+                  ? 'border-charcoal-700 bg-charcoal-700 text-cream-50'
                   : dimmed
-                    ? 'border-cream-200 bg-cream-50 text-charcoal-400'
-                    : 'border-cream-200 bg-white text-charcoal-500'
+                    ? 'border-charcoal-700/15 bg-transparent text-charcoal-400'
+                    : 'border-charcoal-700/20 bg-transparent text-charcoal-600 hover:border-charcoal-700/60'
               }`}
             >
               <span
-                className={`inline-block h-2 w-2 rounded-full ${
-                  active ? 'bg-rosie-500' : 'bg-cream-200'
-                }`}
+                className={`inline-block h-1.5 w-1.5 ${active ? 'bg-gold-200' : 'bg-charcoal-700/30'}`}
               />
-              Include {i.label.toLowerCase()}
-              <span className="text-[10px] text-charcoal-400">{i.window}</span>
+              {i.label}
+              <span className="text-[9px] tracking-[0.15em] opacity-70">{i.window}</span>
             </button>
           );
         })}
