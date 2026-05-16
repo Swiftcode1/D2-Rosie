@@ -1,4 +1,5 @@
 import type {
+  BudgetPreference,
   GuestProfile,
   Interest,
   Itinerary,
@@ -18,11 +19,18 @@ const PRICE_VALUES: Record<Place['priceLevel'], number> = {
   premium: 3
 };
 
-const PRICE_BUDGET: Record<GuestProfile['budgetPreference'], number> = {
+const PRICE_BUDGET: Record<BudgetPreference, number> = {
   low: 1,
   medium: 2,
   premium: 3
 };
+
+function budgetTier(budget: number): BudgetPreference {
+  if (budget <= 0) return 'medium';
+  if (budget <= 50) return 'low';
+  if (budget <= 150) return 'medium';
+  return 'premium';
+}
 
 function placeIsOpen(place: Place, startMins: number, endMins: number): boolean {
   const open = toMinutes(place.openHours.open);
@@ -32,52 +40,153 @@ function placeIsOpen(place: Place, startMins: number, endMins: number): boolean 
 
 function isMealPlace(p: Place, slot: Exclude<MealType, 'cafe'>): boolean {
   if (!p.mealType) return false;
-  if (p.mealType === slot) return true;
-  return false;
+  return p.mealType === slot;
 }
 
-function scorePlace(place: Place, request: PlanRequest, profile: GuestProfile): number {
+// Cheap deterministic 32-bit hash — used to break ties differently per track
+function hash32(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function trackJitter(placeId: string, track: TravelStyle): number {
+  // Up to ±2 — small, deterministic, varies per track
+  return (((hash32(placeId + ':' + track) % 200) - 100) / 50);
+}
+
+function trackBonus(place: Place, track: TravelStyle): number {
+  const t = place.tags;
+  const bf = place.bestFor;
+  if (track === 'relaxed') {
+    let b = 0;
+    if (t.includes('quiet') || t.includes('garden') || t.includes('romantic')) b += 8;
+    if (t.includes('hotel') || t.includes('on-property')) b += 10;
+    if (t.includes('indoor') || t.includes('cafe')) b += 4;
+    if (bf.includes('wellness')) b += 6;
+    if (t.includes('walking') && place.estimatedDurationMinutes > 60) b -= 14;
+    if (place.priceLevel === 'premium') b -= 2;
+    return b;
+  }
+  if (track === 'ambitious') {
+    let b = 0;
+    if (bf.includes('outdoors') || bf.includes('scenic')) b += 8;
+    if (t.includes('hike') || t.includes('walking')) b += 6;
+    if (place.estimatedDurationMinutes >= 60) b += 3;
+    if (t.includes('hotel') || t.includes('on-property')) b -= 6; // stay outside
+    return b;
+  }
+  // balanced
+  return 0;
+}
+
+function scorePlace(
+  place: Place,
+  request: PlanRequest,
+  profile: GuestProfile,
+  track: TravelStyle
+): number {
   let score = 0;
 
   const interestMatches = place.bestFor.filter((b) => request.interests.includes(b)).length;
-  score += interestMatches * 18;
+  score += interestMatches * 22;
 
-  if (place.rating) score += (place.rating - 4) * 12;
+  if (place.rating) score += (place.rating - 4) * 14;
 
-  const distancePenalty = Math.max(0, place.distanceMinutesFromHotel - 8);
-  score -= distancePenalty * 1.2;
+  // Distance penalty grows quadratically for far places
+  const overhead = Math.max(0, place.distanceMinutesFromHotel - 8);
+  score -= overhead * 1.4;
+  if (place.distanceMinutesFromHotel > 16) score -= 6;
 
-  if (request.walkingTolerance === 'low' && place.tags.includes('walking')) score -= 12;
-  if (request.walkingTolerance === 'high' && place.tags.includes('walking')) score += 5;
+  if (request.walkingTolerance === 'low' && place.tags.includes('walking')) score -= 16;
+  if (request.walkingTolerance === 'high' && place.tags.includes('walking')) score += 8;
 
-  const priceFit = Math.abs(PRICE_VALUES[place.priceLevel] - PRICE_BUDGET[profile.budgetPreference]);
-  score -= priceFit * 6;
+  const tier = budgetTier(request.budget || (profile.budgetPreference === 'low' ? 40 : profile.budgetPreference === 'premium' ? 250 : 100));
+  const priceFit = Math.abs(PRICE_VALUES[place.priceLevel] - PRICE_BUDGET[tier]);
+  score -= priceFit * 8;
 
-  if (place.estimatedCost > request.budget) score -= 30;
+  if (request.budget > 0 && place.estimatedCost > request.budget * 0.6) score -= 18;
 
   if (profile.favoritePlaces.includes(place.id)) score += 14;
-
   if (profile.lowWalking && place.tags.includes('walking') && place.estimatedDurationMinutes > 60)
-    score -= 18;
+    score -= 20;
 
-  if (place.tags.includes('hotel') && profile.budgetPreference === 'premium') score += 6;
-  if (place.priceLevel === 'free' && profile.budgetPreference === 'low') score += 8;
+  if (place.tags.includes('hotel') && tier === 'premium') score += 6;
+  if (place.priceLevel === 'free' && tier === 'low') score += 12;
+
+  score += trackBonus(place, track);
+  score += trackJitter(place.id, track);
 
   return score;
+}
+
+function passesHardFilters(
+  place: Place,
+  request: PlanRequest,
+  startMins: number,
+  endMins: number,
+  totalWindow: number
+): boolean {
+  if (!placeIsOpen(place, startMins, endMins)) return false;
+
+  // Budget: a single non-meal stop should not exceed 85% of the budget
+  if (request.budget > 0 && place.estimatedCost > request.budget * 0.85) return false;
+
+  // Time fit — round-trip travel + duration must comfortably fit
+  // Relaxed: allow places that fit within 90% of total window
+  const fullTime = place.estimatedDurationMinutes + place.distanceMinutesFromHotel * 2;
+  if (fullTime > totalWindow * 0.9) return false;
+
+  // Walking-low: hard-exclude long walking-tagged places
+  if (
+    request.walkingTolerance === 'low' &&
+    place.tags.includes('walking') &&
+    place.estimatedDurationMinutes > 50
+  )
+    return false;
+
+  // Interest filter — only require match if guest specified interests AND we have enough places
+  // If filtering leaves too few places, this will be relaxed later
+  if (request.interests.length > 0 && request.interests.length < 5) {
+    const matches = place.bestFor.some((b) => request.interests.includes(b));
+    if (!matches) return false;
+  }
+
+  return true;
 }
 
 function pickMealPlace(
   slot: Exclude<MealType, 'cafe'>,
   request: PlanRequest,
   profile: GuestProfile,
-  used: Set<string>
+  used: Set<string>,
+  track: TravelStyle,
+  remainingBudget: number
 ): Place | undefined {
+  const tier = budgetTier(request.budget);
+
   const candidates = PLACES.filter((p) => isMealPlace(p, slot) && !used.has(p.id)).filter((p) => {
-    if (p.estimatedCost > request.budget) return false;
+    if (request.budget > 0 && p.estimatedCost > remainingBudget) return false;
+    if (request.budget > 0 && p.estimatedCost > request.budget) return false;
+    // Tier guard: low budget rejects premium meals outright
+    if (tier === 'low' && p.priceLevel === 'premium') return false;
     return true;
   });
-  if (!candidates.length) return undefined;
-  candidates.sort((a, b) => scorePlace(b, request, profile) - scorePlace(a, request, profile));
+
+  if (!candidates.length) {
+    // Fallback: ignore remaining-budget guard so we still get *something*
+    const fallback = PLACES.filter((p) => isMealPlace(p, slot) && !used.has(p.id))
+      .filter((p) => tier !== 'low' || p.priceLevel !== 'premium')
+      .sort((a, b) => a.estimatedCost - b.estimatedCost);
+    return fallback[0];
+  }
+
+  candidates.sort(
+    (a, b) => scorePlace(b, request, profile, track) - scorePlace(a, request, profile, track)
+  );
   return candidates[0];
 }
 
@@ -159,13 +268,10 @@ export function generateItineraries(request: PlanRequest, profile: GuestProfile)
   const endMins = toMinutes(request.endTime);
   const totalWindow = Math.max(60, endMins - startMins);
 
-  const baseCandidates = PLACES.filter((p) => !p.mealType).filter((p) =>
-    placeIsOpen(p, startMins, endMins)
-  );
-
   return TRACK_CONFIGS.map((config) => {
     const warnings: string[] = [];
     const used = new Set<string>();
+    const usedCategories = new Set<string>();
     const stops: ItineraryStop[] = [];
 
     let cursor = startMins;
@@ -187,12 +293,29 @@ export function generateItineraries(request: PlanRequest, profile: GuestProfile)
       dinner: request.includeDinner
     };
 
-    const pool = [...baseCandidates]
-      .map((p) => ({ p, score: scorePlace(p, request, profile) }))
+    // Per-track filtered + scored pool
+    let pool = PLACES.filter((p) => !p.mealType)
+      .filter((p) => passesHardFilters(p, request, startMins, endMins, totalWindow))
+      .map((p) => ({ p, score: scorePlace(p, request, profile, config.track) }))
       .sort((a, b) => b.score - a.score)
       .map((x) => x.p);
 
-    const insertMealIfDue = (currentCursor: number): { mealAdded: boolean; mealSlot?: Exclude<MealType, 'cafe'> } => {
+    // If hard filters left us with too few, relax interest constraint
+    if (pool.length < desiredStops) {
+      const relaxedRequest = { ...request, interests: [] as Interest[] };
+      pool = PLACES.filter((p) => !p.mealType)
+        .filter((p) => passesHardFilters(p, relaxedRequest, startMins, endMins, totalWindow))
+        .map((p) => ({ p, score: scorePlace(p, request, profile, config.track) }))
+        .sort((a, b) => b.score - a.score)
+        .map((x) => x.p);
+    }
+
+    const remainingBudget = () =>
+      request.budget > 0 ? Math.max(0, request.budget - totalCost) : Number.POSITIVE_INFINITY;
+
+    const insertMealIfDue = (
+      currentCursor: number
+    ): { mealAdded: boolean; mealSlot?: Exclude<MealType, 'cafe'> } => {
       const slots: Exclude<MealType, 'cafe'>[] = ['breakfast', 'lunch', 'dinner'];
       for (const slot of slots) {
         if (!included[slot]) continue;
@@ -200,12 +323,16 @@ export function generateItineraries(request: PlanRequest, profile: GuestProfile)
         const wStart = toMinutes(w.start);
         const wEnd = toMinutes(w.end);
         if (currentCursor >= wStart && currentCursor <= wEnd) {
-          const meal = pickMealPlace(slot, request, profile, used);
+          const meal = pickMealPlace(slot, request, profile, used, config.track, remainingBudget());
           if (!meal) continue;
           used.add(meal.id);
+          usedCategories.add(meal.category.split('/')[0].trim().toLowerCase());
           included[slot] = false;
 
-          const travel = stops.length > 1 ? Math.max(5, meal.distanceMinutesFromHotel - 2) : meal.distanceMinutesFromHotel;
+          const travel =
+            stops.length > 1
+              ? Math.max(5, meal.distanceMinutesFromHotel - 2)
+              : meal.distanceMinutesFromHotel;
           stops.push({
             kind: 'travel',
             time: minutesToTime(currentCursor),
@@ -221,7 +348,7 @@ export function generateItineraries(request: PlanRequest, profile: GuestProfile)
             label: `${w.label} at ${meal.name}`,
             durationMinutes: meal.estimatedDurationMinutes,
             costEstimate: meal.estimatedCost,
-            reason: `Well-reviewed ${slot} stop close by — ${meal.reviewSummary}`,
+            reason: `Fits your budget at $${meal.estimatedCost}. ${meal.reviewSummary}`,
             mealSlot: slot
           });
           totalCost += meal.estimatedCost;
@@ -229,6 +356,14 @@ export function generateItineraries(request: PlanRequest, profile: GuestProfile)
         }
       }
       return { mealAdded: false };
+    };
+
+    const categoryKey = (p: Place) => p.category.split('/')[0].trim().toLowerCase();
+    const pickNext = (): Place | undefined => {
+      // Prefer a place whose top-level category hasn't been used in this plan yet
+      let candidate = pool.find((p) => !used.has(p.id) && !usedCategories.has(categoryKey(p)));
+      if (!candidate) candidate = pool.find((p) => !used.has(p.id));
+      return candidate;
     };
 
     let placed = 0;
@@ -244,9 +379,14 @@ export function generateItineraries(request: PlanRequest, profile: GuestProfile)
         continue;
       }
 
-      const next = pool.find((p) => !used.has(p.id));
+      const next = pickNext();
       if (!next) break;
+      if (request.budget > 0 && totalCost + next.estimatedCost > request.budget) {
+        used.add(next.id); // skip but mark consumed so we move on
+        continue;
+      }
       used.add(next.id);
+      usedCategories.add(categoryKey(next));
 
       const travel = Math.max(5, next.distanceMinutesFromHotel - (stops.length > 1 ? 2 : 0));
       stops.push({
@@ -257,6 +397,10 @@ export function generateItineraries(request: PlanRequest, profile: GuestProfile)
         travelMinutesFromPrev: travel
       });
       const arrive = cursor + travel;
+      const matchedInterests = next.bestFor.filter((b) => request.interests.includes(b));
+      const interestNote = matchedInterests.length
+        ? `Matches your interest in ${matchedInterests.slice(0, 2).join(' and ')}.`
+        : 'Strong nearby pick.';
       stops.push({
         kind: 'place',
         time: minutesToTime(arrive),
@@ -264,7 +408,7 @@ export function generateItineraries(request: PlanRequest, profile: GuestProfile)
         label: next.name,
         durationMinutes: next.estimatedDurationMinutes,
         costEstimate: next.estimatedCost,
-        reason: `${next.reviewSummary} ${request.interests.some((i) => next.bestFor.includes(i)) ? 'Matches your interests.' : 'Strong nearby pick.'}`
+        reason: `${next.reviewSummary} ${interestNote}`
       });
       totalCost += next.estimatedCost;
 
@@ -398,16 +542,24 @@ export function parseFreeText(text: string): Partial<PlanRequest> {
     const untilMatch = t.match(/\b(?:until|till|back\s+by|return\s+by|by)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
     if (untilMatch) {
       out.endTime = normalize12h(untilMatch[1], untilMatch[2], untilMatch[3]);
-    } else if (/\b(rest of the|this)\s+morning\b/.test(t)) {
+    } else if (/\b(?:rest of the|this|the)\s+morning\b|\bthe\s+morning\b/.test(t)) {
       out.endTime = '12:00';
-    } else if (/\b(this|the)\s+afternoon\b/.test(t)) {
+    } else if (/\b(?:this|the)\s+afternoon\b/.test(t)) {
       out.endTime = '17:00';
-    } else if (/\b(this|the)\s+evening\b/.test(t)) {
+    } else if (/\b(?:this|the)\s+evening\b/.test(t)) {
       out.endTime = '21:00';
-    } else if (/\bbefore\s+dinner\b/.test(t)) {
+    } else if (/\b(?:before|until|till)\s+dinner\b/.test(t)) {
       out.endTime = '17:00';
-    } else if (/\ball\s+day\b/.test(t)) {
+    } else if (/\b(?:before|until|till)\s+lunch\b/.test(t)) {
+      out.endTime = '12:00';
+    } else if (/\bthe\s+rest\s+of\s+the\s+day\b/.test(t)) {
+      out.endTime = '21:00';
+    } else if (/\ball\s+day\b|\bwhole\s+day\b/.test(t)) {
       out.hours = 9;
+    } else if (/\bfor\s+a\s+while\b|\ba\s+little\s+while\b/.test(t)) {
+      out.hours = 3;
+    } else if (/\bfor\s+a\s+bit\b|\bjust\s+a\s+bit\b|\bquick(?:\s+(?:trip|outing))?\b/.test(t)) {
+      out.hours = 2;
     } else if (!out.hours) {
       // Standalone time like "8 pm" / "3:30 pm" → treat as end time
       const standalone = t.match(/(?:^|[^a-z])(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/);
@@ -432,8 +584,28 @@ export function parseFreeText(text: string): Partial<PlanRequest> {
       }
     }
   }
+  // Indirect budget descriptors
+  if (!out.budget) {
+    if (/\b(?:no\s+budget|money(?:'s|\s+is)\s+no\s+object|splurge|no\s+limit|spare\s+no\s+expense|all\s+out|treat\s+myself|sky'?s\s+the\s+limit|whatever\s+it\s+(?:costs|takes))\b/.test(t)) {
+      out.budget = 500;
+    } else if (/\b(?:tight(?:\s+budget)?|cheap|frugal|save\s+money|budget(?:-|\s+)?friendly|inexpensive|affordable|low(?:er)?\s+budget|on\s+a\s+budget|not\s+much\s+money)\b/.test(t)) {
+      out.budget = 40;
+    } else if (/\b(?:reasonable|moderate|mid(?:-|\s)?range|medium\s+budget|not\s+too\s+expensive|nothing\s+crazy|sensible)\b/.test(t)) {
+      out.budget = 100;
+    } else if (/\b(?:premium|high[\s-]end|luxury\s+budget)\b/.test(t)) {
+      out.budget = 250;
+    }
+  }
 
   const interests: Interest[] = [];
+
+  // Open-ended / "I'm flexible" answers — fill a broad mix so Rosie can advance.
+  const openEnded =
+    /\b(?:open\s+to\s+(?:everything|anything|all|it\s+all|a\s+mix|whatever)|i'?m\s+open|anything\s+(?:works|goes|is\s+fine|you\s+recommend)|everything\s+(?:works|sounds\s+good|is\s+fine)?|surprise\s+me|you\s+(?:decide|choose|pick|recommend)|whatever\s+(?:you|works|sounds)|a\s+(?:bit\s+of\s+everything|mix(?:\s+of\s+everything)?)|all\s+of\s+(?:them|the\s+above)|no\s+preference|don'?t\s+(?:mind|care)|either(?:\s+is\s+fine)?)\b/.test(t);
+  if (openEnded) {
+    interests.push('scenic', 'food', 'art', 'outdoors', 'wellness');
+  }
+
   // Liberal matching — Scribe often mishears "scenic" as "seating"/"seeing"/"ceiling"
   if (/scenic|seating|seeing|ceiling|view|vista|nature|outdoor|sunset|sunrise|garden|hike|trail/.test(t)) interests.push('scenic', 'outdoors');
   if (/food|eat|lunch|dinner|breakfast|cuisine|restaurant|brunch|coffee/.test(t)) interests.push('food');
@@ -445,9 +617,9 @@ export function parseFreeText(text: string): Partial<PlanRequest> {
   if (/tech|silicon|startup|stanford/.test(t)) interests.push('tech');
   if (interests.length) out.interests = Array.from(new Set(interests));
 
-  if (/less walking|low walking|don'?t want to walk|not much walking|easy walking|minimal walking|short walks?/.test(t))
+  if (/\b(?:less|low|minimal|easy|light)\s+walking\b|\bdon'?t\s+want\s+to\s+walk\b|\bnot\s+much\s+walking\b|\bshort\s+walks?\b|\btired\b|\bfeet\s+hurt\b|\blow\s+energy\b|\bexhausted\b|\bsit\s+(?:down|a\s+lot)\b|\bsave\s+my\s+legs\b/.test(t))
     out.walkingTolerance = 'low';
-  else if (/lots of walking|walk a lot|happy to walk|long walks?|love walking/.test(t))
+  else if (/\blots\s+of\s+walking\b|\bwalk\s+a\s+lot\b|\bhappy\s+to\s+walk\b|\blong\s+walks?\b|\blove\s+walking\b|\bactive\b|\benergetic\b|\bwant\s+(?:exercise|to\s+move)\b|\bstretch\s+my\s+legs\b/.test(t))
     out.walkingTolerance = 'high';
 
   if (/rideshare|uber|lyft/.test(t)) out.transportation = 'rideshare';
@@ -455,12 +627,24 @@ export function parseFreeText(text: string): Partial<PlanRequest> {
   else if (/driving|drive|car/.test(t)) out.transportation = 'driving';
   else if (/walking|on foot/.test(t)) out.transportation = 'walking';
 
-  if (/include lunch|with lunch|want lunch|do lunch|have lunch|lunch please/.test(t)) out.includeLunch = true;
-  if (/skip lunch|no lunch|already had lunch/.test(t)) out.includeLunch = false;
-  if (/include breakfast|with breakfast|want breakfast|breakfast please/.test(t)) out.includeBreakfast = true;
-  if (/skip breakfast|no breakfast|already had breakfast/.test(t)) out.includeBreakfast = false;
-  if (/include dinner|with dinner|want dinner|dinner please/.test(t)) out.includeDinner = true;
-  if (/skip dinner|no dinner/.test(t)) out.includeDinner = false;
+  if (/include lunch|with lunch|want lunch|do lunch|have lunch|lunch please|grab lunch/.test(t)) out.includeLunch = true;
+  if (/skip lunch|no lunch|already had lunch|just had lunch|ate lunch/.test(t)) out.includeLunch = false;
+  if (/include breakfast|with breakfast|want breakfast|breakfast please|grab breakfast/.test(t)) out.includeBreakfast = true;
+  if (/skip breakfast|no breakfast|already had breakfast|just had breakfast|ate breakfast/.test(t)) out.includeBreakfast = false;
+  if (/include dinner|with dinner|want dinner|dinner please|grab dinner/.test(t)) out.includeDinner = true;
+  if (/skip dinner|no dinner|already had dinner|just had dinner/.test(t)) out.includeDinner = false;
+
+  // Generic hunger cues — leaves decision to the meal-window detector
+  if (/\b(?:i'?m\s+hungry|starving|peckish|could\s+eat|in\s+the\s+mood\s+for\s+food|grab\s+a\s+bite|bite\s+to\s+eat)\b/.test(t)) {
+    if (out.includeLunch === undefined) out.includeLunch = true;
+    if (out.includeDinner === undefined) out.includeDinner = true;
+    if (out.includeBreakfast === undefined) out.includeBreakfast = true;
+  }
+  if (/\b(?:i\s+just\s+ate|not\s+hungry|already\s+ate|i'?m\s+full)\b/.test(t)) {
+    if (out.includeLunch === undefined) out.includeLunch = false;
+    if (out.includeDinner === undefined) out.includeDinner = false;
+    if (out.includeBreakfast === undefined) out.includeBreakfast = false;
+  }
 
   return out;
 }

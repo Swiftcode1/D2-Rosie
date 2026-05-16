@@ -12,6 +12,7 @@ interface Props {
   onBegin: () => void;
   onMicTap: () => void;
   onRestart: () => void;
+  onAutofill?: () => void;
   voiceSupported: boolean;
   elevenLabsConnected: boolean;
 }
@@ -28,6 +29,7 @@ export default function VoiceConcierge({
   onBegin,
   onMicTap,
   onRestart,
+  onAutofill,
   voiceSupported,
   elevenLabsConnected
 }: Props) {
@@ -169,6 +171,14 @@ export default function VoiceConcierge({
               <button onClick={onRestart} className="cta-link-soft text-white/70 hover:text-white">
                 Start Over
               </button>
+              {onAutofill && (
+                <button
+                  onClick={onAutofill}
+                  className="px-4 py-2 text-xs uppercase tracking-wider text-white/60 border border-white/30 hover:border-white/60 hover:text-white/90 transition"
+                >
+                  Autofill Query
+                </button>
+              )}
               {elevenLabsConnected && (
                 <span className="eyebrow text-white/70">ElevenLabs voice</span>
               )}

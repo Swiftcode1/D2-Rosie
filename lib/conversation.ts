@@ -30,7 +30,7 @@ let MESSAGE_COUNTER = 0;
 const nextId = () => `m${Date.now()}-${++MESSAGE_COUNTER}`;
 
 export const GREETING_TEXT =
-  "Hello, welcome to Rosewood Sand Hill. I'm Rosie, your concierge. How many hours would you like to explore today?";
+  "Hello, welcome to Rosewood Sand Hill. I'm Rosie, your concierge. I'll start your day at 10:00 AM. How many hours would you like to explore?";
 
 export function nowAsTime(): string {
   const d = new Date();
@@ -51,7 +51,7 @@ export function addHoursToTime(start: string, hours: number): string {
 
 export function emptyRequest(): PlanRequest {
   return {
-    startTime: nowAsTime(),
+    startTime: '10:00',
     endTime: '',
     budget: 0,
     stops: 3,

@@ -36,6 +36,8 @@ export default function Page() {
   const handlingGuestRef = useRef(false);
   const startedRef = useRef(false);
   const isSpeakingRef = useRef(false);
+  const itinerarySectionRef = useRef<HTMLDivElement>(null);
+  const prevItineraryCountRef = useRef(0);
 
   useEffect(() => {
     profileRef.current = profile;
@@ -63,6 +65,16 @@ export default function Page() {
       setVoiceSupported(ok);
     }
   }, []);
+
+  useEffect(() => {
+    if (prevItineraryCountRef.current === 0 && itineraries.length > 0) {
+      // delay a tick so the DOM mounts the section before scrolling
+      setTimeout(() => {
+        itinerarySectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 350);
+    }
+    prevItineraryCountRef.current = itineraries.length;
+  }, [itineraries]);
 
   const stopAudio = useCallback(() => {
     try {
@@ -204,32 +216,73 @@ export default function Page() {
         const buf = new Uint8Array(analyser.frequencyBinCount);
 
         const startedAt = Date.now();
-        const SILENCE_MS = 2500;
+        const SILENCE_MS = 1500;
         const MAX_MS = 30_000;
-        const MIN_LISTEN_MS = 800;
-        const THRESHOLD = 14;
+        const MIN_LISTEN_MS = 500;
+        const THRESHOLD = 20;
+        const MIN_SPEECH_DURATION_MS = 300;
 
         let lastSpeech = Date.now();
         let everSpoke = false;
+        let speechStartTimestamp: number | null = null;
+        let totalSpeechDuration = 0;
 
         const tick = () => {
           if (stopped) return;
           analyser.getByteFrequencyData(buf);
-          let sum = 0;
-          for (let i = 0; i < buf.length; i++) sum += buf[i];
-          const avg = sum / buf.length;
-          if (avg > THRESHOLD) {
-            lastSpeech = Date.now();
-            everSpoke = true;
+          
+          // Focus on speech frequency range (approximately 300-3400 Hz)
+          // With fftSize=512, we have 256 frequency bins
+          // Sample rate is typically 48000 Hz, so each bin is ~187.5 Hz
+          // Speech range: bins 2-18 (approx 375-3375 Hz)
+          const speechStartBin = 2;
+          const speechEndBin = 18;
+          
+          let speechSum = 0;
+          let speechCount = 0;
+          for (let i = speechStartBin; i <= speechEndBin && i < buf.length; i++) {
+            speechSum += buf[i];
+            speechCount++;
           }
+          const speechAvg = speechCount > 0 ? speechSum / speechCount : 0;
+          
+          // Also check overall energy to avoid false positives from very quiet environments
+          let totalSum = 0;
+          for (let i = 0; i < buf.length; i++) totalSum += buf[i];
+          const totalAvg = totalSum / buf.length;
+          
           const now = Date.now();
+          const isSpeech = speechAvg > THRESHOLD && totalAvg > 8;
+          
+          if (isSpeech) {
+            if (speechStartTimestamp === null) {
+              speechStartTimestamp = now;
+            }
+            lastSpeech = now;
+          } else {
+            if (speechStartTimestamp !== null) {
+              const speechDuration = now - speechStartTimestamp;
+              if (speechDuration > MIN_SPEECH_DURATION_MS) {
+                totalSpeechDuration += speechDuration;
+                everSpoke = true;
+              }
+              speechStartTimestamp = null;
+            }
+          }
+          
           if (now - startedAt > MAX_MS) {
             try {
               recorder!.stop();
             } catch {}
             return;
           }
-          if (everSpoke && now - lastSpeech > SILENCE_MS && now - startedAt > MIN_LISTEN_MS) {
+          
+          // Stop if we have some speech but now have silence, and minimum listen time passed
+          // OR if we've been listening for a while with very little actual speech (noise only)
+          const hasMinimalSpeech = totalSpeechDuration > MIN_SPEECH_DURATION_MS;
+          const listeningTooLongWithNoSpeech = (now - startedAt > 5000) && !hasMinimalSpeech;
+          
+          if ((everSpoke && now - lastSpeech > SILENCE_MS && now - startedAt > MIN_LISTEN_MS) || listeningTooLongWithNoSpeech) {
             try {
               recorder!.stop();
             } catch {}
@@ -428,6 +481,11 @@ export default function Page() {
     startedRef.current = false;
   }, [stopAudio, stopMic]);
 
+  const handleAutofill = useCallback(() => {
+    const autofillText = 'I have five hours, want lunch, like scenic spots and local food, under eighty dollars, with less walking';
+    handleGuestText(autofillText);
+  }, [handleGuestText]);
+
   return (
     <main className="min-h-screen bg-white">
       <Header />
@@ -441,16 +499,19 @@ export default function Page() {
         onBegin={handleBegin}
         onMicTap={handleMicTap}
         onRestart={handleRestart}
+        onAutofill={handleAutofill}
         voiceSupported={voiceSupported}
         elevenLabsConnected={elevenLabsConnected}
       />
 
       {itineraries.length > 0 ? (
-        <ItineraryResults
-          itineraries={itineraries}
-          profile={profile}
-          transportation={conv.request.transportation}
-        />
+        <div ref={itinerarySectionRef}>
+          <ItineraryResults
+            itineraries={itineraries}
+            profile={profile}
+            transportation={conv.request.transportation}
+          />
+        </div>
       ) : (
         <section className="border-b border-[color:var(--line)] bg-white">
           <div className="mx-auto max-w-[900px] px-8 py-24 text-center sm:px-14 sm:py-32">
