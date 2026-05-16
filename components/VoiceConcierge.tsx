@@ -32,15 +32,36 @@ export default function VoiceConcierge({
   onTranscriptChange,
   isPlanning
 }: Props) {
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(transcript || '');
   const [listening, setListening] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
 
-  const agentId =
-    typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID : undefined;
-  const hasElevenLabsAgent = Boolean(agentId);
+  // Stable refs so the recognition callbacks (set up once on mount)
+  // always call the latest parent handlers / read the latest input.
+  const onSubmitRef = useRef(onSubmit);
+  const onTranscriptChangeRef = useRef(onTranscriptChange);
+  const sessionTextRef = useRef('');
 
+  useEffect(() => {
+    onSubmitRef.current = onSubmit;
+  }, [onSubmit]);
+  useEffect(() => {
+    onTranscriptChangeRef.current = onTranscriptChange;
+  }, [onTranscriptChange]);
+
+  // Keep the textarea synced if the parent updates the transcript
+  // (e.g. after a successful submission, voice transcription, or seeding).
+  useEffect(() => {
+    if (transcript !== input) {
+      setInput(transcript || '');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transcript]);
+
+  // Initialize browser speech recognition once. The callbacks read the
+  // latest handlers from refs so we don't churn this whole instance.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const w = window as any;
@@ -50,21 +71,40 @@ export default function VoiceConcierge({
     rec.continuous = false;
     rec.interimResults = true;
     rec.lang = 'en-US';
+
     rec.onresult = (ev: any) => {
       let text = '';
-      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      for (let i = 0; i < ev.results.length; i++) {
         text += ev.results[i][0].transcript;
       }
+      sessionTextRef.current = text;
       setInput(text);
-      onTranscriptChange(text);
+      onTranscriptChangeRef.current(text);
     };
-    rec.onerror = () => {
-      setVoiceError('Browser voice recognition is unavailable. Use the text box below.');
+
+    rec.onerror = (ev: any) => {
+      const msg =
+        ev?.error === 'not-allowed'
+          ? 'Microphone permission denied. Enable it in your browser settings, or type your request below.'
+          : 'Browser voice recognition is unavailable. Use the text box below.';
+      setVoiceError(msg);
       setListening(false);
+      sessionTextRef.current = '';
     };
-    rec.onend = () => setListening(false);
+
+    rec.onend = () => {
+      setListening(false);
+      const finalText = sessionTextRef.current.trim();
+      sessionTextRef.current = '';
+      if (finalText) {
+        setVoiceNotice(`Heard: "${finalText.slice(0, 60)}${finalText.length > 60 ? '…' : ''}" — planning now…`);
+        // Submit on the next tick so React can flush the input state first.
+        setTimeout(() => onSubmitRef.current(finalText), 0);
+      }
+    };
+
     recRef.current = rec;
-  }, [onTranscriptChange]);
+  }, []);
 
   useEffect(() => {
     if (assistantReply && typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -80,55 +120,70 @@ export default function VoiceConcierge({
     }
   }, [assistantReply]);
 
+  // Clear the "heard…" notice once the parent finishes planning and a new
+  // assistant reply is available.
+  useEffect(() => {
+    if (assistantReply && voiceNotice) {
+      const t = setTimeout(() => setVoiceNotice(null), 1500);
+      return () => clearTimeout(t);
+    }
+  }, [assistantReply, voiceNotice]);
+
   const toggleListen = () => {
     if (!recRef.current) {
       setVoiceError('Browser voice not detected — type your request instead.');
       return;
     }
     if (listening) {
-      recRef.current.stop();
+      recRef.current.stop(); // onend will auto-submit if we captured speech
+      return;
+    }
+    setVoiceError(null);
+    setVoiceNotice(null);
+    sessionTextRef.current = '';
+    setListening(true);
+    try {
+      recRef.current.start();
+    } catch {
       setListening(false);
-    } else {
-      setVoiceError(null);
-      setListening(true);
-      try {
-        recRef.current.start();
-      } catch {
-        setListening(false);
-      }
     }
   };
 
   const handleSubmit = () => {
-    const text = (input || SEED_PROMPT).trim();
+    const text = (input || transcript || SEED_PROMPT).trim();
     onSubmit(text);
   };
 
   return (
-    <section className="relative overflow-hidden rounded-3xl border border-rosie-100 bg-white shadow-soft">
-      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-rosie-300 via-gold-300 to-rosie-300" />
-      <div className="grid gap-8 p-6 sm:p-10 lg:grid-cols-[1fr_1.2fr]">
+    <section className="relative overflow-hidden border border-charcoal-700/10 bg-cream-50 shadow-card">
+      <div className="grid gap-10 p-8 sm:p-12 lg:grid-cols-[1fr_1.2fr]">
         <div className="flex flex-col items-start gap-6">
           <div>
-            <div className="text-xs uppercase tracking-[0.25em] text-gold-500">Talk to Rosie</div>
-            <h2 className="mt-2 font-serif text-3xl text-charcoal-700">How can I help today?</h2>
-            <p className="mt-2 text-sm text-charcoal-400">
-              Tap the microphone or type your request. Rosie will plan a custom itinerary.
+            <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.35em] text-gold-400">
+              <span className="inline-block h-px w-6 bg-gold-300" />
+              Speak with Rosie
+            </div>
+            <h2 className="mt-4 font-serif text-3xl italic text-charcoal-700 sm:text-4xl">
+              How may I assist you today?
+            </h2>
+            <p className="mt-3 max-w-sm text-sm font-light leading-relaxed text-charcoal-500">
+              Tap the microphone and speak — Rosie will transcribe your request and refresh the plans automatically when you pause.
             </p>
           </div>
 
           <button
             onClick={toggleListen}
             type="button"
-            className={`group relative inline-flex h-32 w-32 items-center justify-center rounded-full transition ${
+            className={`group relative inline-flex h-32 w-32 items-center justify-center border transition ${
               listening
-                ? 'bg-rosie-500 text-white shadow-soft'
-                : 'bg-gradient-to-br from-rosie-100 to-rosie-200 text-rosie-600 hover:from-rosie-200 hover:to-rosie-300'
+                ? 'border-charcoal-700 bg-charcoal-700 text-cream-50'
+                : 'border-charcoal-700/30 bg-transparent text-charcoal-600 hover:border-charcoal-700 hover:text-charcoal-700'
             }`}
             aria-label="Talk to Rosie"
+            style={{ borderRadius: '50%' }}
           >
             {listening && (
-              <span className="absolute inset-0 animate-ping rounded-full bg-rosie-300 opacity-60" />
+              <span className="absolute inset-0 animate-ping rounded-full bg-charcoal-700/30" />
             )}
             <svg viewBox="0 0 24 24" className="relative h-12 w-12" fill="currentColor">
               <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z" />
@@ -136,28 +191,20 @@ export default function VoiceConcierge({
             </svg>
           </button>
 
-          <div className="text-xs uppercase tracking-[0.2em] text-charcoal-400">
-            {listening ? 'Listening…' : 'Tap to speak'}
+          <div className="text-[10px] uppercase tracking-[0.35em] text-charcoal-400">
+            {listening ? 'Listening… speak naturally' : voiceNotice ? 'Planning your day…' : 'Tap to speak'}
           </div>
 
-          <div className="rounded-2xl border border-cream-200 bg-cream-50 p-4 text-xs text-charcoal-400">
-            <div className="font-semibold uppercase tracking-wider text-gold-500">ElevenLabs</div>
-            <div className="mt-1">
-              {hasElevenLabsAgent ? (
-                <>Connected agent: <span className="font-mono text-charcoal-500">{agentId}</span></>
-              ) : (
-                <>
-                  Demo voice fallback active. Add <code className="font-mono">NEXT_PUBLIC_ELEVENLABS_AGENT_ID</code> and{' '}
-                  <code className="font-mono">ELEVENLABS_API_KEY</code> to your <code>.env</code> to enable the live Conversational AI agent.
-                </>
-              )}
+          {voiceNotice && (
+            <div className="w-full border-l-2 border-gold-300 bg-cream-100/60 px-4 py-3 text-xs font-light italic text-charcoal-600">
+              {voiceNotice}
             </div>
-          </div>
+          )}
         </div>
 
-        <div className="flex flex-col gap-4">
-          <label className="text-xs uppercase tracking-[0.2em] text-charcoal-400">
-            Tell Rosie what you want to do
+        <div className="flex flex-col gap-5">
+          <label className="text-[10px] uppercase tracking-[0.35em] text-charcoal-500">
+            Tell Rosie what you would like to do
           </label>
           <textarea
             value={input}
@@ -167,33 +214,33 @@ export default function VoiceConcierge({
             }}
             placeholder={SEED_PROMPT}
             rows={4}
-            className="rounded-2xl border border-cream-200 bg-cream-50 p-4 font-serif text-lg text-charcoal-600 outline-none transition focus:border-rosie-300 focus:bg-white"
+            className="border border-charcoal-700/15 bg-white p-5 font-serif text-xl italic text-charcoal-700 outline-none transition focus:border-charcoal-700"
           />
 
           <button
             onClick={handleSubmit}
             disabled={isPlanning}
-            className="inline-flex items-center justify-center gap-2 rounded-full bg-rosie-500 px-6 py-3 text-sm font-medium uppercase tracking-wider text-white transition hover:bg-rosie-600 disabled:opacity-60"
+            className="inline-flex items-center justify-center gap-3 border border-charcoal-700 bg-charcoal-700 px-8 py-4 text-[11px] font-medium uppercase tracking-[0.35em] text-cream-50 transition hover:bg-charcoal-600 disabled:opacity-60"
           >
             {isPlanning ? 'Planning…' : 'Plan my itinerary'}
-            <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor">
+            <svg viewBox="0 0 20 20" className="h-3 w-3" fill="currentColor">
               <path d="M3 10a1 1 0 0 1 1-1h9.586L9.293 4.707a1 1 0 0 1 1.414-1.414l6 6a1 1 0 0 1 0 1.414l-6 6a1 1 0 1 1-1.414-1.414L13.586 11H4a1 1 0 0 1-1-1Z" />
             </svg>
           </button>
 
           {voiceError && (
-            <div className="text-xs text-rosie-600">{voiceError}</div>
+            <div className="text-xs italic text-rosie-500">{voiceError}</div>
           )}
 
-          <div className="rounded-2xl border border-rosie-100 bg-rosie-50/60 p-5">
-            <div className="text-[10px] uppercase tracking-[0.3em] text-rosie-600">Guest request</div>
-            <div className="mt-2 font-serif text-lg text-charcoal-700">
-              {transcript || <span className="text-charcoal-400">Awaiting your request…</span>}
+          <div className="border-l-2 border-rosie-500 bg-cream-100/50 p-6">
+            <div className="text-[10px] uppercase tracking-[0.35em] text-rosie-500">Guest request</div>
+            <div className="mt-3 font-serif text-xl italic leading-snug text-charcoal-700">
+              {transcript || <span className="not-italic text-charcoal-400">Awaiting your request…</span>}
             </div>
             {assistantReply && (
-              <div className="mt-4 border-t border-rosie-100 pt-4">
-                <div className="text-[10px] uppercase tracking-[0.3em] text-gold-500">Rosie</div>
-                <div className="mt-2 text-charcoal-600">{assistantReply}</div>
+              <div className="mt-5 border-t border-charcoal-700/10 pt-4">
+                <div className="text-[10px] uppercase tracking-[0.35em] text-gold-400">Rosie</div>
+                <div className="mt-2 font-light leading-relaxed text-charcoal-600">{assistantReply}</div>
               </div>
             )}
           </div>

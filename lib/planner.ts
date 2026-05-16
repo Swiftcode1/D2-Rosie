@@ -333,46 +333,87 @@ export function parseFreeText(text: string): Partial<PlanRequest> {
   const t = text.toLowerCase();
   const out: Partial<PlanRequest> = {};
 
-  const hoursMatch = t.match(/(\d+(?:\.\d+)?)\s*hour/);
+  // Hours: "3 hours", "3hr", "3 hrs", "3h", "for 3 hours"
+  const hoursMatch = t.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|h\b)/);
   if (hoursMatch) out.hours = Number(hoursMatch[1]);
 
-  const fromTo = t.match(/from\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:to|until|-|–)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+  // Time range — optional "from"/"between", many separators, and standalone
+  // forms like "1pm-4pm" or "10 to 3".
+  const fromTo = t.match(
+    /(?:from\s+|between\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:to|until|till|-|–|—|thru|through|and)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/
+  );
   if (fromTo) {
     out.startTime = normalize12h(fromTo[1], fromTo[2], fromTo[3]);
     out.endTime = normalize12h(fromTo[4], fromTo[5], fromTo[6]);
   }
 
-  const budgetMatch = t.match(/(?:under|below|less than|<)\s*\$?(\d+)/);
-  if (budgetMatch) out.budget = Number(budgetMatch[1]);
-  else {
-    const dollarMatch = t.match(/\$(\d+)/);
-    if (dollarMatch) out.budget = Number(dollarMatch[1]);
+  // Budget: a lot of natural phrasings
+  let budget: number | undefined;
+  const budgetUnder = t.match(/(?:under|below|less than|max\.?|maximum|up to|no more than|<=?)\s*\$?(\d+)/);
+  if (budgetUnder) budget = Number(budgetUnder[1]);
+  if (budget === undefined) {
+    const dollarFirst = t.match(/\$(\d+)/);
+    if (dollarFirst) budget = Number(dollarFirst[1]);
   }
+  if (budget === undefined) {
+    const budgetPhrase = t.match(/(?:budget(?:\s+of)?|around|about|approximately|roughly|spend|spending)\s*\$?(\d+)/);
+    if (budgetPhrase) budget = Number(budgetPhrase[1]);
+  }
+  if (budget === undefined) {
+    const dollarsAfter = t.match(/(\d+)\s*(?:dollars?|bucks?|usd)\b/);
+    if (dollarsAfter) budget = Number(dollarsAfter[1]);
+  }
+  if (budget !== undefined) out.budget = budget;
 
+  // Stops: "2 stops", "three places", "a couple of spots"
+  const stopsMatch = t.match(/(\d+)\s*(?:stops?|places?|spots?|stops?)/);
+  if (stopsMatch) out.stops = Math.max(1, Math.min(6, Number(stopsMatch[1])));
+  else if (/\bcouple\b/.test(t)) out.stops = 2;
+  else if (/\bhandful\b/.test(t)) out.stops = 4;
+
+  // Interests — broader vocabulary
   const interests: Interest[] = [];
-  if (/scenic|view|nature|outdoor/.test(t)) interests.push('scenic', 'outdoors');
-  if (/food|eat|lunch|dinner|breakfast|cuisine|local food/.test(t)) interests.push('food');
-  if (/art|museum|gallery/.test(t)) interests.push('art');
-  if (/shop/.test(t)) interests.push('shopping');
-  if (/spa|wellness|relax/.test(t)) interests.push('wellness');
-  if (/luxury|premium|fancy/.test(t)) interests.push('luxury');
-  if (/family|kids/.test(t)) interests.push('family-friendly');
-  if (/tech|silicon/.test(t)) interests.push('tech');
+  if (/scenic|view|vista|nature|outdoor|outside|hike|hiking|trail|park|garden|beach|landscape|fresh air/.test(t))
+    interests.push('scenic', 'outdoors');
+  if (/food|eat|lunch|dinner|breakfast|brunch|cuisine|restaurant|dine|dining|tast|hungry|meal/.test(t))
+    interests.push('food');
+  if (/art|museum|gallery|exhibit|sculpture|paint/.test(t)) interests.push('art');
+  if (/shop|boutique|store|mall|retail/.test(t)) interests.push('shopping');
+  if (/spa|wellness|relax|yoga|massage|unwind|peaceful|quiet|calm/.test(t)) interests.push('wellness');
+  if (/luxury|premium|fancy|upscale|fine[- ]dining|michelin|five[- ]star|high[- ]end/.test(t))
+    interests.push('luxury');
+  if (/family|kid|kids|child|children|toddler/.test(t)) interests.push('family-friendly');
+  if (/tech|silicon|startup|innovation/.test(t)) interests.push('tech');
+  if (/nightlife|bar|cocktail|club|drink/.test(t)) interests.push('nightlife');
   if (interests.length) out.interests = Array.from(new Set(interests));
 
-  if (/less walking|low walking|don'?t want to walk|not much walking/.test(t))
+  // Walking tolerance
+  if (/less walking|low walking|don'?t want to walk|not much walking|minimal walking|easy on (?:my )?feet|bad knee|tired feet/.test(t))
     out.walkingTolerance = 'low';
-  else if (/lots of walking|walk a lot/.test(t)) out.walkingTolerance = 'high';
+  else if (/lots? of walking|walk a lot|love walking|much walking|active/.test(t))
+    out.walkingTolerance = 'high';
 
-  if (/rideshare|uber|lyft/.test(t)) out.transportation = 'rideshare';
-  else if (/shuttle/.test(t)) out.transportation = 'hotel shuttle';
-  else if (/driving|car/.test(t)) out.transportation = 'driving';
-  else if (/walk/.test(t)) out.transportation = 'walking';
+  // Transportation
+  if (/rideshare|uber|lyft|taxi/.test(t)) out.transportation = 'rideshare';
+  else if (/shuttle|hotel car/.test(t)) out.transportation = 'hotel shuttle';
+  else if (/driving|drive\b|car\b/.test(t)) out.transportation = 'driving';
+  else if (/walk(?:ing)?\b/.test(t)) out.transportation = 'walking';
 
-  if (/include lunch|with lunch/.test(t)) out.includeLunch = true;
-  if (/skip lunch|no lunch/.test(t)) out.includeLunch = false;
-  if (/include breakfast/.test(t)) out.includeBreakfast = true;
-  if (/include dinner/.test(t)) out.includeDinner = true;
+  // Pace
+  if (/relaxed|slow|easy pace|leisurely|chill|unhurried|laid[- ]back/.test(t)) out.pace = 'relaxed';
+  else if (/packed|busy|tight|lots? to do|fast[- ]paced|cram|squeeze in/.test(t)) out.pace = 'packed';
+  else if (/balanced|mix\b|moderate/.test(t)) out.pace = 'balanced';
+
+  // Meals — broader triggers
+  if (/include lunch|with lunch|grab lunch|have lunch|lunch (?:in|out|spot|stop|reservation)|do lunch/.test(t))
+    out.includeLunch = true;
+  if (/skip lunch|no lunch|without lunch|already (?:had|ate) lunch/.test(t)) out.includeLunch = false;
+  if (/include breakfast|with breakfast|grab breakfast|have breakfast|brunch/.test(t))
+    out.includeBreakfast = true;
+  if (/skip breakfast|no breakfast|already had breakfast/.test(t)) out.includeBreakfast = false;
+  if (/include dinner|with dinner|grab dinner|have dinner|dinner (?:res|reservation|out|spot|stop)/.test(t))
+    out.includeDinner = true;
+  if (/skip dinner|no dinner|without dinner/.test(t)) out.includeDinner = false;
 
   return out;
 }

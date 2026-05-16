@@ -27,31 +27,34 @@ export default function MapPreview({ itinerary, transportation }: Props) {
   })();
 
   return (
-    <div className="rounded-2xl border border-cream-200 bg-gradient-to-br from-cream-50 to-cream-100 p-5">
-      <div className="flex items-center justify-between">
+    <div className="border border-charcoal-700/10 bg-cream-100/40 p-6">
+      <div className="flex items-center justify-between border-b border-charcoal-700/10 pb-4">
         <div>
-          <div className="text-xs uppercase tracking-[0.2em] text-gold-500">Route preview</div>
-          <div className="mt-0.5 text-sm text-charcoal-500">
-            {transportation} · ~{totalTravel} min driving total
+          <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.3em] text-gold-400">
+            <span className="inline-block h-px w-6 bg-gold-300" />
+            Route preview
+          </div>
+          <div className="mt-2 font-serif text-sm italic text-charcoal-500">
+            {transportation} · approx. {totalTravel} min driving total
           </div>
         </div>
         <a
           href={directionsUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="rounded-full border border-rosie-200 bg-white px-3 py-1.5 text-xs uppercase tracking-wider text-rosie-600 hover:bg-rosie-50"
+          className="border border-charcoal-700/20 px-4 py-2 text-[10px] uppercase tracking-[0.3em] text-charcoal-600 transition hover:border-charcoal-700 hover:text-charcoal-700"
         >
           Open in Google Maps
         </a>
       </div>
 
-      <div className="relative mt-5">
+      <div className="relative mt-6">
         <div
-          className="absolute left-4 right-4 top-1/2 h-px -translate-y-1/2 bg-gradient-to-r from-gold-300 via-rosie-300 to-gold-300"
+          className="absolute left-4 right-4 top-5 h-px bg-charcoal-700/15"
           aria-hidden
         />
-        <div className="relative flex flex-wrap items-center justify-between gap-3">
-          <MapPin label={HOTEL.name} sub="Start" tone="hotel" />
+        <div className="relative flex flex-wrap items-start justify-between gap-3">
+          <MapPin label={HOTEL.name} sub="Depart" tone="hotel" />
           {stops.map((s, i) => (
             <MapPin
               key={i}
@@ -66,8 +69,8 @@ export default function MapPreview({ itinerary, transportation }: Props) {
       </div>
 
       {!hasMapsKey && (
-        <div className="mt-4 rounded-xl border border-cream-200 bg-white/70 p-3 text-[11px] uppercase tracking-wider text-charcoal-400">
-          Add <code className="font-mono">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code> to enable the live embedded map.
+        <div className="mt-5 border-t border-charcoal-700/10 pt-3 text-[10px] uppercase tracking-[0.25em] text-charcoal-400">
+          Add <code className="font-mono normal-case tracking-normal text-charcoal-600">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code> to enable the live embedded map.
         </div>
       )}
     </div>
@@ -87,19 +90,19 @@ function MapPin({
 }) {
   const bg =
     tone === 'hotel'
-      ? 'bg-gold-300 text-charcoal-700'
+      ? 'border-gold-300 bg-gold-100 text-charcoal-700'
       : tone === 'meal'
-        ? 'bg-rosie-500 text-white'
-        : 'bg-white text-rosie-600 border border-rosie-200';
+        ? 'border-rosie-500 bg-rosie-500 text-cream-50'
+        : 'border-charcoal-700 bg-cream-50 text-charcoal-700';
   return (
-    <div className="relative flex w-28 flex-col items-center text-center">
+    <div className="relative flex w-24 flex-col items-center text-center">
       <div
-        className={`flex h-10 w-10 items-center justify-center rounded-full font-semibold shadow ${bg}`}
+        className={`flex h-10 w-10 items-center justify-center border font-serif text-sm ${bg}`}
       >
-        {tone === 'hotel' ? '★' : tone === 'meal' ? '🍽' : index}
+        {tone === 'hotel' ? '★' : tone === 'meal' ? '◆' : index}
       </div>
-      <div className="mt-2 text-xs font-medium text-charcoal-600 line-clamp-2">{label}</div>
-      <div className="text-[10px] uppercase tracking-wider text-charcoal-400">{sub}</div>
+      <div className="mt-3 line-clamp-2 font-serif text-xs italic text-charcoal-700">{label}</div>
+      <div className="mt-1 text-[9px] uppercase tracking-[0.25em] text-charcoal-400">{sub}</div>
     </div>
   );
 }

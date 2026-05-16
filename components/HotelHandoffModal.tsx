@@ -58,18 +58,20 @@ export default function HotelHandoffModal({ action, itinerary, profile, onClose 
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-lg overflow-hidden rounded-t-3xl bg-white shadow-soft sm:rounded-3xl"
+        className="relative w-full max-w-lg overflow-hidden border border-charcoal-700/15 bg-cream-50 shadow-soft"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-rosie-300 via-gold-300 to-rosie-300" />
-        <div className="flex items-start justify-between p-6">
+        <div className="flex items-start justify-between border-b border-charcoal-700/10 p-8">
           <div>
-            <div className="text-xs uppercase tracking-[0.25em] text-gold-500">Rosewood</div>
-            <h3 className="mt-1 font-serif text-2xl text-charcoal-700">{title[action]}</h3>
+            <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.4em] text-gold-400">
+              <span className="inline-block h-px w-6 bg-gold-300" />
+              Rosewood
+            </div>
+            <h3 className="mt-3 font-serif text-2xl italic text-charcoal-700">{title[action]}</h3>
           </div>
           <button
             onClick={onClose}
-            className="rounded-full border border-cream-200 px-3 py-1 text-xs text-charcoal-500 hover:bg-cream-50"
+            className="border border-charcoal-700/20 px-3 py-1.5 text-[10px] uppercase tracking-[0.3em] text-charcoal-500 transition hover:border-charcoal-700/60 hover:text-charcoal-700"
           >
             Close
           </button>
@@ -96,7 +98,7 @@ export default function HotelHandoffModal({ action, itinerary, profile, onClose 
               </ul>
               <button
                 onClick={() => setConfirmed(true)}
-                className="w-full rounded-full bg-rosie-500 px-5 py-3 text-sm font-medium uppercase tracking-wider text-white hover:bg-rosie-600"
+                className="w-full border border-charcoal-700 bg-charcoal-700 px-5 py-3.5 text-[11px] font-medium uppercase tracking-[0.35em] text-cream-50 transition hover:bg-charcoal-600"
               >
                 {confirmed ? '✓ Reservation request sent' : 'Send reservation request'}
               </button>
@@ -151,8 +153,8 @@ export default function HotelHandoffModal({ action, itinerary, profile, onClose 
 
           {action === 'qr' && (
             <div className="flex flex-col items-center gap-3 text-sm text-charcoal-600">
-              <div className="rounded-2xl border border-cream-200 bg-white p-4 shadow-sm">
-                <QRCodeSVG value={mapsUrl} size={180} fgColor="#7a3326" />
+              <div className="border border-charcoal-700/15 bg-cream-50 p-5">
+                <QRCodeSVG value={mapsUrl} size={180} fgColor="#1f1c18" />
               </div>
               <p className="text-center text-xs text-charcoal-400">
                 Scan to open this itinerary in maps on the guest’s phone.
