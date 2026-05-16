@@ -24,80 +24,97 @@ export default function ItineraryCard({
   const [modal, setModal] = useState<HandoffAction | null>(null);
 
   const places = itinerary.stops.filter((s) => s.place && (s.kind === 'place' || s.kind === 'meal'));
+  const heroPlace = places[0]?.place;
 
   return (
     <article
       onClick={onActivate}
-      className={`relative cursor-pointer rounded-3xl border bg-white p-6 shadow-card transition ${
+      className={`relative cursor-pointer overflow-hidden rounded-3xl border bg-white shadow-card transition ${
         active
           ? 'border-rosie-300 ring-2 ring-rosie-200'
           : 'border-cream-200 hover:border-rosie-200'
       }`}
     >
-      <div className="absolute inset-x-6 top-0 h-1 -translate-y-1/2 rounded-full bg-gradient-to-r from-gold-300 via-rosie-300 to-gold-300" />
+      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-gold-300 via-rosie-300 to-gold-300" />
 
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.25em] text-gold-500">
-            {itinerary.track} track
-          </div>
-          <h3 className="mt-1 font-serif text-2xl text-charcoal-700">{itinerary.title}</h3>
-          <p className="text-sm text-charcoal-400">{itinerary.subtitle}</p>
-        </div>
-        <div className="text-right">
-          <div className="text-xs uppercase tracking-wider text-charcoal-400">Total</div>
-          <div className="font-serif text-xl text-charcoal-700">
-            ${itinerary.totalCost}
-          </div>
-          <div className="text-xs text-charcoal-400">
-            ⏱ {Math.floor(itinerary.totalMinutes / 60)}h {itinerary.totalMinutes % 60}m
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {places.slice(0, 4).map((s) =>
-          s.place ? (
-            <div
-              key={s.place.id}
-              className="overflow-hidden rounded-2xl border border-cream-200 bg-cream-50"
-            >
-              <div
-                className="h-24 w-full bg-cover bg-center"
-                style={{ backgroundImage: `url(${s.place.image})` }}
-              />
-              <div className="px-2 py-1.5">
-                <div className="truncate text-xs font-medium text-charcoal-600">{s.place.name}</div>
-                <div className="truncate text-[10px] uppercase tracking-wider text-charcoal-400">
-                  {s.place.category}
-                </div>
-              </div>
+      {heroPlace && (
+        <div className="relative h-56 w-full overflow-hidden sm:h-72">
+          <div
+            className="absolute inset-0 bg-cover bg-center"
+            style={{ backgroundImage: `url(${heroPlace.image})` }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-charcoal-700/70 via-charcoal-700/10 to-transparent" />
+          <div className="relative flex h-full flex-col justify-end p-8 text-white">
+            <div className="text-[11px] uppercase tracking-[0.3em] text-cream-100/90">
+              {itinerary.track} track
             </div>
-          ) : null
-        )}
-      </div>
+            <h3 className="mt-2 font-serif text-4xl">{itinerary.title}</h3>
+            <p className="mt-1 text-base text-cream-100/90">{itinerary.subtitle}</p>
+            <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-cream-100/90">
+              <span>💲 ${itinerary.totalCost} total</span>
+              <span>
+                ⏱ {Math.floor(itinerary.totalMinutes / 60)}h {itinerary.totalMinutes % 60}m
+              </span>
+              <span>📍 {places.length} stops</span>
+              <span>🔁 {itinerary.returnBufferMinutes} min return buffer</span>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <div className="mt-6">
-        <Timeline stops={itinerary.stops} />
-      </div>
+      <div className="grid gap-10 p-8 sm:p-12 lg:grid-cols-[1fr_1.1fr]">
+        <div>
+          <div className="text-xs uppercase tracking-[0.25em] text-gold-500">Timeline</div>
+          <div className="mt-5">
+            <Timeline stops={itinerary.stops} />
+          </div>
+        </div>
 
-      <div className="mt-6">
-        <MapPreview itinerary={itinerary} transportation={transportation} />
-      </div>
+        <div className="flex flex-col gap-8">
+          <div>
+            <div className="text-xs uppercase tracking-[0.25em] text-gold-500">Stops</div>
+            <div className="mt-4 grid grid-cols-2 gap-4">
+              {places.slice(0, 4).map((s) =>
+                s.place ? (
+                  <div
+                    key={s.place.id}
+                    className="overflow-hidden rounded-2xl border border-cream-200 bg-cream-50"
+                  >
+                    <div
+                      className="h-28 w-full bg-cover bg-center"
+                      style={{ backgroundImage: `url(${s.place.image})` }}
+                    />
+                    <div className="px-3 py-2">
+                      <div className="truncate text-sm font-medium text-charcoal-600">
+                        {s.place.name}
+                      </div>
+                      <div className="truncate text-[10px] uppercase tracking-wider text-charcoal-400">
+                        {s.place.category}
+                      </div>
+                    </div>
+                  </div>
+                ) : null
+              )}
+            </div>
+          </div>
 
-      <div className="mt-6 rounded-2xl border border-rosie-100 bg-rosie-50/40 p-4">
-        <div className="text-[10px] uppercase tracking-[0.3em] text-rosie-600">Why Rosie chose this</div>
-        <div className="mt-1 text-sm text-charcoal-600">{itinerary.explanation}</div>
-        {itinerary.warnings.length > 0 && (
-          <div className="mt-2 text-xs text-rosie-600">⚠ {itinerary.warnings.join(' ')}</div>
-        )}
-        <div className="mt-3 flex flex-wrap gap-3 text-xs text-charcoal-500">
-          <span>🔁 Return buffer: {itinerary.returnBufferMinutes} min</span>
-          <span>📍 {places.length} stops</span>
+          <MapPreview itinerary={itinerary} transportation={transportation} />
+
+          <div className="rounded-2xl border border-rosie-100 bg-rosie-50/40 p-6">
+            <div className="text-[10px] uppercase tracking-[0.3em] text-rosie-600">
+              Why Rosie chose this
+            </div>
+            <div className="mt-3 text-base leading-relaxed text-charcoal-600">
+              {itinerary.explanation}
+            </div>
+            {itinerary.warnings.length > 0 && (
+              <div className="mt-3 text-xs text-rosie-600">⚠ {itinerary.warnings.join(' ')}</div>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="mt-6 flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 border-t border-cream-200 bg-cream-50/60 px-8 py-5 sm:px-12">
         <ActionBtn onClick={() => setModal('reserve')} tone="primary">
           Reserve / Book
         </ActionBtn>
@@ -138,7 +155,7 @@ function ActionBtn({
         e.stopPropagation();
         onClick();
       }}
-      className={`rounded-full px-4 py-2 text-xs font-medium uppercase tracking-wider transition ${cls}`}
+      className={`rounded-full px-5 py-2.5 text-xs font-medium uppercase tracking-wider transition ${cls}`}
     >
       {children}
     </button>

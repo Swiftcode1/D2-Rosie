@@ -93,7 +93,7 @@ export default function Page() {
   return (
     <main className="min-h-screen bg-cream-50">
       <Header />
-      <div className="mx-auto max-w-6xl space-y-8 px-6 py-8">
+      <div className="mx-auto max-w-7xl space-y-16 px-6 py-12 sm:px-10">
         <VoiceConcierge
           transcript={transcript}
           assistantReply={assistantReply}
@@ -102,7 +102,7 @@ export default function Page() {
           isPlanning={isPlanning}
         />
 
-        <div className="grid gap-8 lg:grid-cols-[1fr_1.4fr]">
+        <div className="grid gap-10 lg:grid-cols-[1fr_1.4fr]">
           <GuestProfileCard profile={profile} onChange={setProfile} />
           <PlanningPanel
             request={request}
