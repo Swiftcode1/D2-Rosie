@@ -132,8 +132,8 @@ function passesHardFilters(
 ): boolean {
   if (!placeIsOpen(place, startMins, endMins)) return false;
 
-  // Budget: a single non-meal stop should not exceed 85% of the budget
-  if (request.budget > 0 && place.estimatedCost > request.budget * 0.85) return false;
+  // Budget: a single non-meal stop should not exceed 1.2x budget
+  if (request.budget > 0 && place.estimatedCost > request.budget * 1.2) return false;
 
   // Time fit — round-trip travel + duration must comfortably fit
   // Relaxed: allow places that fit within 90% of total window
@@ -381,7 +381,7 @@ export function generateItineraries(request: PlanRequest, profile: GuestProfile)
 
       const next = pickNext();
       if (!next) break;
-      if (request.budget > 0 && totalCost + next.estimatedCost > request.budget) {
+      if (request.budget > 0 && totalCost + next.estimatedCost > request.budget * 1.2) {
         used.add(next.id); // skip but mark consumed so we move on
         continue;
       }
@@ -415,7 +415,11 @@ export function generateItineraries(request: PlanRequest, profile: GuestProfile)
       cursor = arrive + next.estimatedDurationMinutes + config.bufferPerStop;
       placed += 1;
 
-      if (cursor + config.returnBuffer >= endMins) break;
+      // Hard stop: never exceed the time slot
+      // For relaxed/balanced, be stricter - stop before reaching end time
+      const timeLimit = config.track === 'relaxed' ? endMins - 15 : 
+                       config.track === 'balanced' ? endMins - 10 : endMins;
+      if (cursor + config.returnBuffer >= timeLimit) break;
     }
 
     // try to squeeze remaining meals
@@ -449,8 +453,8 @@ export function generateItineraries(request: PlanRequest, profile: GuestProfile)
       warnings.push('Return buffer is tight — Rosie recommends rideshare or shuttle.');
     }
 
-    if (totalCost > request.budget) {
-      warnings.push(`Total cost ($${totalCost}) is over your $${request.budget} budget.`);
+    if (request.budget > 0 && totalCost > request.budget * 1.2) {
+      warnings.push(`Total cost ($${totalCost}) exceeds 1.2x your $${request.budget} budget.`);
     }
 
     const totalMinutes = arriveBack - startMins;

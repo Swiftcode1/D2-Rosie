@@ -219,7 +219,7 @@ export default function Page() {
         const SILENCE_MS = 1500;
         const MAX_MS = 30_000;
         const MIN_LISTEN_MS = 500;
-        const THRESHOLD = 20;
+        const THRESHOLD = 8;
         const MIN_SPEECH_DURATION_MS = 300;
 
         let lastSpeech = Date.now();
@@ -383,10 +383,10 @@ export default function Page() {
   );
 
   const handleGuestText = useCallback(
-    (text: string) => {
+    async (text: string) => {
       if (handlingGuestRef.current) return;
       handlingGuestRef.current = true;
-      const result = processGuest(convRef.current, text, profileRef.current);
+      const result = await processGuest(convRef.current, text, profileRef.current);
       setConv(result.state);
 
       if (result.readyToPlan) {
