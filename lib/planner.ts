@@ -108,8 +108,8 @@ const TRACK_CONFIGS: TrackConfig[] = [
     bufferPerStop: 10
   },
   {
-    track: 'packed',
-    title: 'Packed Plan',
+    track: 'ambitious',
+    title: 'Ambitious Plan',
     subtitle: 'More to see — tighter timing',
     stopCount: 4,
     returnBuffer: 15,
@@ -133,7 +133,7 @@ function explanationFor(
       ? `I kept this plan unhurried — only a couple of stops with a ${config.returnBuffer}-minute return buffer so you’re not rushed getting back to ${HOTEL.name}.`
       : config.track === 'balanced'
         ? `I built a smart mix of ${config.stopCount} stops with a ${config.returnBuffer}-minute return buffer to ${HOTEL.name}.`
-        : `I packed in ${config.stopCount} stops — timing is tighter, with a ${config.returnBuffer}-minute return buffer.`
+        : `I fit ${config.stopCount} stops in — the pace is more ambitious, with a ${config.returnBuffer}-minute return buffer.`
   );
 
   if (hasBreakfast) parts.push('Since your window overlaps breakfast, I included a quick morning stop.');
@@ -329,8 +329,62 @@ export function generateItineraries(request: PlanRequest, profile: GuestProfile)
   });
 }
 
+function normalizeNumbers(input: string): string {
+  let t = input;
+
+  t = t.replace(/\bhalf\s+an\s+hour\b/g, '0.5 hours');
+  t = t.replace(/\ban\s+hour\b/g, '1 hour');
+  t = t.replace(/\ba\s+couple(?:\s+of)?\s+hours?\b/g, '2 hours');
+  t = t.replace(/\ba\s+few\s+hours?\b/g, '3 hours');
+  t = t.replace(/\bnoon\b/g, '12 pm');
+  t = t.replace(/\bmidnight\b/g, '12 am');
+  t = t.replace(/\bo['']?\s*clock\b/g, '');
+
+  const tens: Record<string, number> = {
+    twenty: 20, thirty: 30, forty: 40, fifty: 50,
+    sixty: 60, seventy: 70, eighty: 80, ninety: 90
+  };
+  const ones: Record<string, number> = {
+    one: 1, two: 2, three: 3, four: 4, five: 5,
+    six: 6, seven: 7, eight: 8, nine: 9
+  };
+
+  // "one hundred", "two hundred fifty"
+  t = t.replace(
+    /\b(one|two|three|four|five|six|seven|eight|nine)\s+hundred(?:\s+and)?\s+(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\b/g,
+    (_m, a, b) => String(ones[a] * 100 + tens[b])
+  );
+  t = t.replace(
+    /\b(one|two|three|four|five|six|seven|eight|nine)\s+hundred\b/g,
+    (_m, a) => String(ones[a] * 100)
+  );
+  t = t.replace(/\b(a|one)\s+hundred\b/g, '100');
+
+  // Compound tens-ones: "twenty five" or "twenty-five"
+  t = t.replace(
+    /\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\s-]+(one|two|three|four|five|six|seven|eight|nine)\b/g,
+    (_m, a, b) => String(tens[a] + ones[b])
+  );
+
+  const singles: Record<string, string> = {
+    zero: '0', one: '1', two: '2', three: '3', four: '4',
+    five: '5', six: '6', seven: '7', eight: '8', nine: '9',
+    ten: '10', eleven: '11', twelve: '12', thirteen: '13',
+    fourteen: '14', fifteen: '15', sixteen: '16', seventeen: '17',
+    eighteen: '18', nineteen: '19',
+    twenty: '20', thirty: '30', forty: '40', fifty: '50',
+    sixty: '60', seventy: '70', eighty: '80', ninety: '90'
+  };
+  for (const [w, d] of Object.entries(singles)) {
+    t = t.replace(new RegExp(`\\b${w}\\b`, 'g'), d);
+  }
+
+  return t;
+}
+
 export function parseFreeText(text: string): Partial<PlanRequest> {
-  const t = text.toLowerCase();
+  const raw = text.toLowerCase();
+  const t = normalizeNumbers(raw);
   const out: Partial<PlanRequest> = {};
 
   const hoursMatch = t.match(/(\d+(?:\.\d+)?)\s*hour/);
@@ -340,39 +394,73 @@ export function parseFreeText(text: string): Partial<PlanRequest> {
   if (fromTo) {
     out.startTime = normalize12h(fromTo[1], fromTo[2], fromTo[3]);
     out.endTime = normalize12h(fromTo[4], fromTo[5], fromTo[6]);
+  } else {
+    const untilMatch = t.match(/\b(?:until|till|back\s+by|return\s+by|by)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+    if (untilMatch) {
+      out.endTime = normalize12h(untilMatch[1], untilMatch[2], untilMatch[3]);
+    } else if (/\b(rest of the|this)\s+morning\b/.test(t)) {
+      out.endTime = '12:00';
+    } else if (/\b(this|the)\s+afternoon\b/.test(t)) {
+      out.endTime = '17:00';
+    } else if (/\b(this|the)\s+evening\b/.test(t)) {
+      out.endTime = '21:00';
+    } else if (/\bbefore\s+dinner\b/.test(t)) {
+      out.endTime = '17:00';
+    } else if (/\ball\s+day\b/.test(t)) {
+      out.hours = 9;
+    } else if (!out.hours) {
+      // Standalone time like "8 pm" / "3:30 pm" → treat as end time
+      const standalone = t.match(/(?:^|[^a-z])(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/);
+      if (standalone) {
+        out.endTime = normalize12h(standalone[1], standalone[2], standalone[3]);
+      }
+    }
   }
 
-  const budgetMatch = t.match(/(?:under|below|less than|<)\s*\$?(\d+)/);
+  // Budget: "under 80", "$80", "80 dollars", "80 bucks", or just "80" near "budget"
+  const budgetMatch = t.match(/(?:under|below|less than|<|around|about|roughly|~)\s*\$?(\d+)/);
   if (budgetMatch) out.budget = Number(budgetMatch[1]);
   else {
     const dollarMatch = t.match(/\$(\d+)/);
     if (dollarMatch) out.budget = Number(dollarMatch[1]);
+    else {
+      const dollarsWord = t.match(/(\d+)\s*(?:dollar|buck)/);
+      if (dollarsWord) out.budget = Number(dollarsWord[1]);
+      else {
+        const budgetNear = t.match(/budget[^\d]*(\d+)/);
+        if (budgetNear) out.budget = Number(budgetNear[1]);
+      }
+    }
   }
 
   const interests: Interest[] = [];
-  if (/scenic|view|nature|outdoor/.test(t)) interests.push('scenic', 'outdoors');
-  if (/food|eat|lunch|dinner|breakfast|cuisine|local food/.test(t)) interests.push('food');
-  if (/art|museum|gallery/.test(t)) interests.push('art');
-  if (/shop/.test(t)) interests.push('shopping');
-  if (/spa|wellness|relax/.test(t)) interests.push('wellness');
-  if (/luxury|premium|fancy/.test(t)) interests.push('luxury');
-  if (/family|kids/.test(t)) interests.push('family-friendly');
-  if (/tech|silicon/.test(t)) interests.push('tech');
+  // Liberal matching — Scribe often mishears "scenic" as "seating"/"seeing"/"ceiling"
+  if (/scenic|seating|seeing|ceiling|view|vista|nature|outdoor|sunset|sunrise|garden|hike|trail/.test(t)) interests.push('scenic', 'outdoors');
+  if (/food|eat|lunch|dinner|breakfast|cuisine|restaurant|brunch|coffee/.test(t)) interests.push('food');
+  if (/art|museum|gallery|exhibit|painting|sculpture/.test(t)) interests.push('art');
+  if (/shop|boutique|store|mall/.test(t)) interests.push('shopping');
+  if (/spa|wellness|relax|massage|yoga|sauna|pool/.test(t)) interests.push('wellness');
+  if (/luxury|premium|fancy|upscale|fine\s+dining|michelin/.test(t)) interests.push('luxury');
+  if (/family|kids|children|family-friendly/.test(t)) interests.push('family-friendly');
+  if (/tech|silicon|startup|stanford/.test(t)) interests.push('tech');
   if (interests.length) out.interests = Array.from(new Set(interests));
 
-  if (/less walking|low walking|don'?t want to walk|not much walking/.test(t))
+  if (/less walking|low walking|don'?t want to walk|not much walking|easy walking|minimal walking|short walks?/.test(t))
     out.walkingTolerance = 'low';
-  else if (/lots of walking|walk a lot/.test(t)) out.walkingTolerance = 'high';
+  else if (/lots of walking|walk a lot|happy to walk|long walks?|love walking/.test(t))
+    out.walkingTolerance = 'high';
 
   if (/rideshare|uber|lyft/.test(t)) out.transportation = 'rideshare';
   else if (/shuttle/.test(t)) out.transportation = 'hotel shuttle';
-  else if (/driving|car/.test(t)) out.transportation = 'driving';
-  else if (/walk/.test(t)) out.transportation = 'walking';
+  else if (/driving|drive|car/.test(t)) out.transportation = 'driving';
+  else if (/walking|on foot/.test(t)) out.transportation = 'walking';
 
-  if (/include lunch|with lunch/.test(t)) out.includeLunch = true;
-  if (/skip lunch|no lunch/.test(t)) out.includeLunch = false;
-  if (/include breakfast/.test(t)) out.includeBreakfast = true;
-  if (/include dinner/.test(t)) out.includeDinner = true;
+  if (/include lunch|with lunch|want lunch|do lunch|have lunch|lunch please/.test(t)) out.includeLunch = true;
+  if (/skip lunch|no lunch|already had lunch/.test(t)) out.includeLunch = false;
+  if (/include breakfast|with breakfast|want breakfast|breakfast please/.test(t)) out.includeBreakfast = true;
+  if (/skip breakfast|no breakfast|already had breakfast/.test(t)) out.includeBreakfast = false;
+  if (/include dinner|with dinner|want dinner|dinner please/.test(t)) out.includeDinner = true;
+  if (/skip dinner|no dinner/.test(t)) out.includeDinner = false;
 
   return out;
 }

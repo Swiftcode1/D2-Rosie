@@ -90,7 +90,7 @@ export default function GuestProfileCard({ profile, onChange }: Props) {
           >
             <option value="relaxed">Relaxed</option>
             <option value="balanced">Balanced</option>
-            <option value="packed">Packed</option>
+            <option value="ambitious">Ambitious</option>
           </select>
         </Field>
         <Field label="Budget preference">

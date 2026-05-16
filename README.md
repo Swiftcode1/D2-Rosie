@@ -19,13 +19,14 @@ This is built to demo end-to-end without any API keys.
 
 ## Hackathon demo flow
 
-1. Open the app — the seed prompt is pre-loaded:
-   > "I have 5 hours from 10 AM to 3 PM, want something scenic and local, include lunch, less walking, under $80."
-2. Click **Plan my itinerary** — three plans appear instantly.
-3. Try the **microphone** button (Chrome / Edge support browser voice recognition out of the box).
-4. Tweak the **guest profile** (interests, walking tolerance, budget) → re-plan to see Rosie adapt.
-5. On any plan card, click **Send to front desk** to see the mock concierge handoff modal.
-6. Click **Share QR** to get a scannable QR pointing at the Google Maps multi-stop route.
+1. Open the app on Chrome or Edge — Rosie greets and waits for a tap.
+2. Tap **Begin** — Rosie speaks via ElevenLabs (or browser TTS if no key), then auto-listens.
+3. Reply naturally: “I have five hours, want lunch, like scenic and local food, under eighty dollars, less walking.” Rosie asks short follow-ups until she has what she needs.
+4. Three plans appear — **Relaxed**, **Balanced** (default), **Ambitious** — swap between them with the tabs (only one renders at a time).
+5. Tap **Send to Front Desk** on any plan for the mock concierge handoff.
+6. Tap **Share QR** for a Google Maps multi-stop route the guest can scan.
+
+Voice is fully server-routed: the browser records audio with `MediaRecorder`, uploads it to `/api/stt` (ElevenLabs Scribe), and plays Rosie’s reply from `/api/tts` (ElevenLabs TTS). No browser-native SpeechRecognition is used — so Chrome’s flaky Google-STT network errors are gone.
 
 ## Run locally
 
@@ -36,7 +37,7 @@ npm run dev
 
 Open http://localhost:3000.
 
-The base demo requires **no API keys**.
+Voice requires `ELEVENLABS_API_KEY`. The rest of the UI (planner, plan cards, map preview, handoff modals) works without keys.
 
 ## Adding real APIs
 
@@ -45,6 +46,9 @@ Copy `.env.example` to `.env.local`:
 ```
 NEXT_PUBLIC_ELEVENLABS_AGENT_ID=
 ELEVENLABS_API_KEY=
+ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM
+ELEVENLABS_MODEL_ID=eleven_turbo_v2_5
+ELEVENLABS_STT_MODEL_ID=scribe_v1
 OPENAI_API_KEY=
 GOOGLE_MAPS_API_KEY=
 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=
@@ -52,9 +56,15 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 ```
 
-### ElevenLabs Conversational AI
-- Add `NEXT_PUBLIC_ELEVENLABS_AGENT_ID` and `ELEVENLABS_API_KEY`.
-- The voice panel detects the agent ID and shows it as connected — wire in the ElevenLabs Conversational AI widget or SDK inside `components/VoiceConcierge.tsx`.
+### ElevenLabs voice (required for the voice flow)
+- `ELEVENLABS_API_KEY` powers **both** Rosie's voice output and the guest's voice input.
+- **Voice in:** the browser captures audio via `MediaRecorder` and uploads it to `/api/stt`, which proxies to ElevenLabs **Scribe** (`scribe_v1` by default).
+- **Voice out:** every Rosie reply is sent to `/api/tts`, which proxies to ElevenLabs TTS. Default voice is **Rachel** (`21m00Tcm4TlvDq8ikWAM`) — override with `ELEVENLABS_VOICE_ID`.
+- Without the key the conversation flow surfaces a clear "set ELEVENLABS_API_KEY" message; TTS fallback to browser `speechSynthesis` is preserved if the key is missing.
+- `NEXT_PUBLIC_ELEVENLABS_AGENT_ID` is optional — paste an agent ID from elevenlabs.io to render their floating ConvAI widget alongside the in-page conversation loop.
+
+### Update the .env and restart
+After editing `.env.local`, **stop and restart `npm run dev`** — server env vars are only read at boot.
 
 ### Google Maps
 - Add `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` to swap the styled route preview in `components/MapPreview.tsx` with the real `@react-google-maps/api` embed.

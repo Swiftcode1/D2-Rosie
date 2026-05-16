@@ -105,7 +105,7 @@ export default function PlanningPanel({
           >
             <option value="relaxed">Relaxed</option>
             <option value="balanced">Balanced</option>
-            <option value="packed">Packed</option>
+            <option value="ambitious">Ambitious</option>
           </select>
         </Field>
         <Field label="Walking tolerance">

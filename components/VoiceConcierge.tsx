@@ -1,266 +1,180 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
+import type { ConvMessage } from '@/lib/conversation';
 
 interface Props {
-  transcript: string;
-  assistantReply: string;
-  onSubmit: (text: string) => void;
-  onTranscriptChange: (t: string) => void;
-  isPlanning: boolean;
+  messages: ConvMessage[];
+  isListening: boolean;
+  isSpeaking: boolean;
+  voiceError: string | null;
+  started: boolean;
+  onBegin: () => void;
+  onMicTap: () => void;
+  onRestart: () => void;
+  voiceSupported: boolean;
+  elevenLabsConnected: boolean;
 }
 
-const SEED_PROMPT =
-  'I have 5 hours, want lunch, like scenic spots and local food, and want to stay under $80.';
-
-type SpeechRecognitionLike = {
-  start: () => void;
-  stop: () => void;
-  abort?: () => void;
-  onresult: ((ev: any) => void) | null;
-  onerror: ((ev: any) => void) | null;
-  onend: (() => void) | null;
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-};
+const HERO_IMAGE =
+  'https://images.unsplash.com/photo-1564501049412-61c2a3083791?w=2400&q=85&auto=format&fit=crop';
 
 export default function VoiceConcierge({
-  transcript,
-  assistantReply,
-  onSubmit,
-  onTranscriptChange,
-  isPlanning
+  messages,
+  isListening,
+  isSpeaking,
+  voiceError,
+  started,
+  onBegin,
+  onMicTap,
+  onRestart,
+  voiceSupported,
+  elevenLabsConnected
 }: Props) {
-  const [input, setInput] = useState('');
-  const [listening, setListening] = useState(false);
-  const [voiceError, setVoiceError] = useState<string | null>(null);
-  const [widgetReady, setWidgetReady] = useState(false);
-  const recRef = useRef<SpeechRecognitionLike | null>(null);
-
-  const agentId =
-    typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID : undefined;
-  const hasElevenLabsAgent = Boolean(agentId);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!hasElevenLabsAgent) return;
-    if (typeof window === 'undefined') return;
-    if (document.querySelector('script[data-convai="1"]')) {
-      setWidgetReady(true);
-      return;
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
     }
-    const s = document.createElement('script');
-    s.src = 'https://unpkg.com/@elevenlabs/convai-widget-embed';
-    s.async = true;
-    s.type = 'text/javascript';
-    s.dataset.convai = '1';
-    s.onload = () => setWidgetReady(true);
-    document.body.appendChild(s);
-  }, [hasElevenLabsAgent]);
+  }, [messages]);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const handler = (ev: Event) => {
-      const detail = (ev as CustomEvent).detail;
-      const text =
-        (typeof detail === 'string' && detail) ||
-        detail?.text ||
-        detail?.message ||
-        detail?.transcript ||
-        '';
-      if (text) {
-        onTranscriptChange(text);
-        onSubmit(text);
-      }
-    };
-    const names = ['convai-user-message', 'convai-message', 'elevenlabs-convai-message'];
-    names.forEach((n) => window.addEventListener(n, handler as EventListener));
-    return () => names.forEach((n) => window.removeEventListener(n, handler as EventListener));
-  }, [onSubmit, onTranscriptChange]);
-
-  useEffect(() => {
-    if (hasElevenLabsAgent) return;
-    if (typeof window === 'undefined') return;
-    const w = window as any;
-    const Speech = w.SpeechRecognition || w.webkitSpeechRecognition;
-    if (!Speech) return;
-    const rec: SpeechRecognitionLike = new Speech();
-    rec.continuous = false;
-    rec.interimResults = true;
-    rec.lang = 'en-US';
-    rec.onresult = (ev: any) => {
-      let text = '';
-      for (let i = ev.resultIndex; i < ev.results.length; i++) {
-        text += ev.results[i][0].transcript;
-      }
-      setInput(text);
-      onTranscriptChange(text);
-    };
-    rec.onerror = () => {
-      setVoiceError('Browser voice recognition is unavailable. Use the text box below.');
-      setListening(false);
-    };
-    rec.onend = () => setListening(false);
-    recRef.current = rec;
-  }, [onTranscriptChange, hasElevenLabsAgent]);
-
-  useEffect(() => {
-    if (hasElevenLabsAgent) return;
-    if (!assistantReply) return;
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    try {
-      window.speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance(assistantReply);
-      const voices = window.speechSynthesis.getVoices();
-      const preferred = voices.find((v) =>
-        /Samantha|Google US English|Microsoft Aria|Microsoft Jenny|Google UK English Female/i.test(v.name)
-      );
-      if (preferred) utter.voice = preferred;
-      utter.rate = 1;
-      utter.pitch = 1.05;
-      window.speechSynthesis.speak(utter);
-    } catch {
-      // ignore
-    }
-  }, [assistantReply, hasElevenLabsAgent]);
-
-  const toggleListen = () => {
-    if (!recRef.current) {
-      setVoiceError('Browser voice not detected — type your request instead.');
-      return;
-    }
-    if (listening) {
-      recRef.current.stop();
-      setListening(false);
-    } else {
-      setVoiceError(null);
-      setListening(true);
-      try {
-        recRef.current.start();
-      } catch {
-        setListening(false);
-      }
-    }
-  };
-
-  const handleSubmit = () => {
-    const text = (input || SEED_PROMPT).trim();
-    onSubmit(text);
-  };
+  const latestRosie = [...messages].reverse().find((m) => m.speaker === 'rosie');
+  const latestGuest = [...messages].reverse().find((m) => m.speaker === 'guest');
 
   return (
-    <section className="relative overflow-hidden rounded-3xl border border-rosie-100 bg-white shadow-soft">
-      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-rosie-300 via-gold-300 to-rosie-300" />
-      <div className="grid gap-12 p-10 sm:p-14 lg:grid-cols-[1fr_1.1fr]">
-        <div className="flex flex-col gap-8">
-          <div>
-            <div className="text-xs uppercase tracking-[0.3em] text-gold-500">Talk to Rosie</div>
-            <h2 className="mt-3 font-serif text-4xl text-charcoal-700">How can I help today?</h2>
-            <p className="mt-3 max-w-md text-base text-charcoal-400">
-              Tap the microphone or type your request. Rosie will plan a custom itinerary anchored on the hotel.
+    <section className="relative w-full overflow-hidden bg-[color:var(--ink)]">
+      <div
+        className="absolute inset-0 bg-cover bg-center"
+        style={{ backgroundImage: `url(${HERO_IMAGE})` }}
+        aria-hidden
+      />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/55 to-black/80" aria-hidden />
+
+      <div className="relative z-10 mx-auto flex max-w-[1400px] flex-col items-center px-8 py-20 text-center text-white sm:px-14 sm:py-24">
+        <div className="text-[11px] uppercase tracking-[0.4em] text-white/70">Voice Concierge</div>
+
+        {!started ? (
+          <>
+            <h1 className="mt-8 max-w-3xl font-serif text-5xl font-light leading-[1.05] tracking-wide sm:text-7xl">
+              Tap to begin your conversation
+            </h1>
+            <p className="mt-6 max-w-xl text-base font-light leading-relaxed text-white/80">
+              Rosie will greet you, ask a few short questions, and compose three plans for the day.
             </p>
-          </div>
-
-          {hasElevenLabsAgent ? (
-            <div className="flex flex-col items-start gap-4">
-              <div className="rounded-2xl border border-rosie-100 bg-cream-50 p-6">
-                <div className="text-[10px] uppercase tracking-[0.3em] text-rosie-600">ElevenLabs ConvAI</div>
-                <div className="mt-2 text-sm text-charcoal-500">
-                  Tap the floating Rosie bubble (bottom-right) to start a natural voice conversation.
-                </div>
-              </div>
-              {widgetReady && (
-                <elevenlabs-convai agent-id={agentId}></elevenlabs-convai>
-              )}
+            <button
+              onClick={onBegin}
+              type="button"
+              className="mt-14 group relative inline-flex h-32 w-32 items-center justify-center rounded-full border border-white/60 bg-white/10 text-white backdrop-blur transition hover:border-white hover:bg-white/20 sm:h-36 sm:w-36"
+              aria-label="Begin conversation with Rosie"
+            >
+              <svg viewBox="0 0 24 24" className="h-12 w-12" fill="currentColor">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </button>
+            <div className="mt-5 text-[11px] uppercase tracking-[0.32em] text-white/70">
+              Tap to begin
             </div>
-          ) : (
-            <div className="flex flex-col items-start gap-5">
-              <button
-                onClick={toggleListen}
-                type="button"
-                className={`group relative inline-flex h-36 w-36 items-center justify-center rounded-full transition ${
-                  listening
-                    ? 'bg-rosie-500 text-white shadow-soft'
-                    : 'bg-gradient-to-br from-rosie-100 to-rosie-200 text-rosie-600 hover:from-rosie-200 hover:to-rosie-300'
-                }`}
-                aria-label="Talk to Rosie"
-              >
-                {listening && (
-                  <span className="absolute inset-0 animate-ping rounded-full bg-rosie-300 opacity-60" />
-                )}
-                <svg viewBox="0 0 24 24" className="relative h-14 w-14" fill="currentColor">
-                  <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z" />
-                  <path d="M19 11a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V21a1 1 0 0 0 2 0v-3.08A7 7 0 0 0 19 11Z" />
-                </svg>
-              </button>
-              <div className="text-xs uppercase tracking-[0.25em] text-charcoal-400">
-                {listening ? 'Listening…' : 'Tap to speak'}
-              </div>
-            </div>
-          )}
-
-          <div className="rounded-2xl border border-cream-200 bg-cream-50 p-5 text-xs leading-relaxed text-charcoal-400">
-            <div className="font-semibold uppercase tracking-wider text-gold-500">Voice setup</div>
-            <div className="mt-2">
-              {hasElevenLabsAgent ? (
-                <>
-                  Connected to ElevenLabs agent <span className="font-mono text-charcoal-500">{agentId}</span>.
-                  Voice in and natural voice out are handled by the ConvAI widget.
-                </>
-              ) : (
-                <>
-                  Browser voice fallback active — Chrome / Edge only, and sounds robotic. Add{' '}
-                  <code className="font-mono">NEXT_PUBLIC_ELEVENLABS_AGENT_ID</code> to your{' '}
-                  <code>.env</code> and reload to enable the natural ElevenLabs voice.
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-5">
-          <label className="text-xs uppercase tracking-[0.25em] text-charcoal-400">
-            Or type your request
-          </label>
-          <textarea
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
-              onTranscriptChange(e.target.value);
-            }}
-            placeholder={SEED_PROMPT}
-            rows={5}
-            className="rounded-2xl border border-cream-200 bg-cream-50 p-5 font-serif text-lg leading-relaxed text-charcoal-600 outline-none transition focus:border-rosie-300 focus:bg-white"
-          />
-
-          <button
-            onClick={handleSubmit}
-            disabled={isPlanning}
-            className="inline-flex items-center justify-center gap-2 rounded-full bg-rosie-500 px-7 py-4 text-sm font-medium uppercase tracking-wider text-white transition hover:bg-rosie-600 disabled:opacity-60"
-          >
-            {isPlanning ? 'Planning…' : 'Plan my itinerary'}
-            <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor">
-              <path d="M3 10a1 1 0 0 1 1-1h9.586L9.293 4.707a1 1 0 0 1 1.414-1.414l6 6a1 1 0 0 1 0 1.414l-6 6a1 1 0 1 1-1.414-1.414L13.586 11H4a1 1 0 0 1-1-1Z" />
-            </svg>
-          </button>
-
-          {voiceError && (
-            <div className="text-xs text-rosie-600">{voiceError}</div>
-          )}
-
-          <div className="mt-2 rounded-2xl border border-rosie-100 bg-rosie-50/60 p-6">
-            <div className="text-[10px] uppercase tracking-[0.3em] text-rosie-600">Guest request</div>
-            <div className="mt-3 font-serif text-xl leading-relaxed text-charcoal-700">
-              {transcript || <span className="text-charcoal-400">Awaiting your request…</span>}
-            </div>
-            {assistantReply && (
-              <div className="mt-5 border-t border-rosie-100 pt-5">
-                <div className="text-[10px] uppercase tracking-[0.3em] text-gold-500">Rosie</div>
-                <div className="mt-3 text-base leading-relaxed text-charcoal-600">{assistantReply}</div>
+            {!voiceSupported && (
+              <div className="mt-3 text-xs text-white/80">
+                Voice unavailable in this browser. Please use Chrome, Edge, or Safari with microphone access.
               </div>
             )}
-          </div>
-        </div>
+            {voiceError && <div className="mt-3 text-xs text-white/80">{voiceError}</div>}
+            {elevenLabsConnected && (
+              <div className="mt-10">
+                <span className="eyebrow text-white/70">ElevenLabs voice connected</span>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <h1 className="mt-6 max-w-3xl font-serif text-3xl font-light leading-[1.15] tracking-wide sm:mt-10 sm:text-5xl">
+              {latestRosie?.text || 'Listening for your reply…'}
+            </h1>
+
+            <button
+              onClick={onMicTap}
+              type="button"
+              disabled={!voiceSupported || isSpeaking}
+              className={`mt-10 group relative inline-flex h-32 w-32 items-center justify-center rounded-full border transition sm:h-36 sm:w-36 ${
+                isListening
+                  ? 'border-white bg-white text-[color:var(--ink)]'
+                  : isSpeaking
+                    ? 'border-white/40 bg-white/10 text-white/50'
+                    : voiceSupported
+                      ? 'border-white/60 bg-white/10 text-white backdrop-blur hover:border-white hover:bg-white/20'
+                      : 'cursor-not-allowed border-white/30 bg-transparent text-white/40'
+              }`}
+              aria-label="Tap to speak"
+            >
+              {isListening && (
+                <span className="absolute -inset-2 animate-ping rounded-full border border-white/40" />
+              )}
+              {isSpeaking && (
+                <span className="absolute -inset-2 animate-pulse rounded-full border border-[color:var(--gold-soft)]" />
+              )}
+              <svg viewBox="0 0 24 24" className="h-12 w-12" fill="currentColor">
+                <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z" />
+                <path d="M19 11a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V21a1 1 0 0 0 2 0v-3.08A7 7 0 0 0 19 11Z" />
+              </svg>
+            </button>
+
+            <div className="mt-5 text-[11px] uppercase tracking-[0.32em] text-white/70">
+              {isSpeaking
+                ? 'Rosie is speaking…'
+                : isListening
+                  ? 'Listening — speak now'
+                  : 'Tap to reply'}
+            </div>
+
+            {voiceError && <div className="mt-3 text-xs text-white/80">{voiceError}</div>}
+
+            {latestGuest && (
+              <div className="mt-10 max-w-3xl border border-white/20 bg-black/30 px-8 py-5 text-left backdrop-blur">
+                <div className="eyebrow text-white/60">You</div>
+                <div className="mt-2 font-serif text-lg leading-snug text-white">
+                  “{latestGuest.text}”
+                </div>
+              </div>
+            )}
+
+            {messages.length > 2 && (
+              <details className="mt-8 w-full max-w-3xl text-left">
+                <summary className="cursor-pointer text-[11px] uppercase tracking-[0.32em] text-white/60 hover:text-white">
+                  Full conversation
+                </summary>
+                <div
+                  ref={scrollRef}
+                  className="mt-4 max-h-72 space-y-3 overflow-y-auto border-t border-white/15 pt-4"
+                >
+                  {messages.map((m) => (
+                    <div
+                      key={m.id}
+                      className={`text-sm leading-relaxed ${
+                        m.speaker === 'rosie' ? 'text-[color:var(--gold-soft)]' : 'text-white/90'
+                      }`}
+                    >
+                      <span className="mr-3 inline-block w-12 text-[10px] uppercase tracking-[0.28em] opacity-60">
+                        {m.speaker === 'rosie' ? 'Rosie' : 'You'}
+                      </span>
+                      {m.text}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+
+            <div className="mt-10 flex flex-wrap items-center justify-center gap-6">
+              <button onClick={onRestart} className="cta-link-soft text-white/70 hover:text-white">
+                Start Over
+              </button>
+              {elevenLabsConnected && (
+                <span className="eyebrow text-white/70">ElevenLabs voice</span>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </section>
   );
