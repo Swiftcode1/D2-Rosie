@@ -482,7 +482,9 @@ export default function Page() {
   }, [stopAudio, stopMic]);
 
   const handleAutofill = useCallback(() => {
-    const autofillText = 'I have five hours, want lunch, like scenic spots and local food, under eighty dollars, with less walking';
+    // const autofillText = 'I have five hours, want lunch, like scenic spots and local food, under eighty dollars, with less walking';
+    const autofillText = 'I have four hours, like art and local food, under eighty dollars, and want dinner';
+
     handleGuestText(autofillText);
   }, [handleGuestText]);
 
