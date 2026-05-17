@@ -22,89 +22,108 @@ export default function ItineraryCard({
   onActivate
 }: Props) {
   const [modal, setModal] = useState<HandoffAction | null>(null);
-
   const places = itinerary.stops.filter((s) => s.place && (s.kind === 'place' || s.kind === 'meal'));
+  const heroPlace = places[0]?.place;
 
   return (
     <article
       onClick={onActivate}
-      className={`relative cursor-pointer rounded-3xl border bg-white p-6 shadow-card transition ${
-        active
-          ? 'border-rosie-300 ring-2 ring-rosie-200'
-          : 'border-cream-200 hover:border-rosie-200'
+      className={`relative cursor-pointer bg-white transition ${
+        active ? 'opacity-100' : 'opacity-95 hover:opacity-100'
       }`}
     >
-      <div className="absolute inset-x-6 top-0 h-1 -translate-y-1/2 rounded-full bg-gradient-to-r from-gold-300 via-rosie-300 to-gold-300" />
-
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.25em] text-gold-500">
-            {itinerary.track} track
+      {heroPlace && (
+        <div className="relative aspect-[21/9] w-full overflow-hidden bg-[color:var(--ink)]">
+          <div
+            className="absolute inset-0 bg-cover bg-center"
+            style={{ backgroundImage: `url(${heroPlace.image})` }}
+            aria-hidden
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/70" aria-hidden />
+          <div className="relative flex h-full flex-col justify-end p-10 text-white sm:p-16">
+            <div className="text-[11px] uppercase tracking-[0.4em] text-white/80">
+              The {itinerary.track} Plan
+            </div>
+            <h3 className="mt-5 font-serif text-5xl font-light leading-[1.05] tracking-wide sm:text-6xl">
+              {itinerary.title}
+            </h3>
+            <p className="mt-4 max-w-xl text-base font-light text-white/85">{itinerary.subtitle}</p>
           </div>
-          <h3 className="mt-1 font-serif text-2xl text-charcoal-700">{itinerary.title}</h3>
-          <p className="text-sm text-charcoal-400">{itinerary.subtitle}</p>
         </div>
-        <div className="text-right">
-          <div className="text-xs uppercase tracking-wider text-charcoal-400">Total</div>
-          <div className="font-serif text-xl text-charcoal-700">
-            ${itinerary.totalCost}
-          </div>
-          <div className="text-xs text-charcoal-400">
-            ⏱ {Math.floor(itinerary.totalMinutes / 60)}h {itinerary.totalMinutes % 60}m
-          </div>
-        </div>
-      </div>
+      )}
 
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {places.slice(0, 4).map((s) =>
-          s.place ? (
-            <div
-              key={s.place.id}
-              className="overflow-hidden rounded-2xl border border-cream-200 bg-cream-50"
-            >
-              <div
-                className="h-24 w-full bg-cover bg-center"
-                style={{ backgroundImage: `url(${s.place.image})` }}
-              />
-              <div className="px-2 py-1.5">
-                <div className="truncate text-xs font-medium text-charcoal-600">{s.place.name}</div>
-                <div className="truncate text-[10px] uppercase tracking-wider text-charcoal-400">
-                  {s.place.category}
-                </div>
+      <div className="mx-auto max-w-[1200px] px-8 py-20 sm:px-14 sm:py-24">
+        <div className="grid gap-x-16 gap-y-12 lg:grid-cols-4">
+          <Stat label="Total" value={`$${itinerary.totalCost}`} />
+          <Stat
+            label="Duration"
+            value={`${Math.floor(itinerary.totalMinutes / 60)}h ${itinerary.totalMinutes % 60}m`}
+          />
+          <Stat label="Stops" value={`${places.length}`} />
+          <Stat label="Return buffer" value={`${itinerary.returnBufferMinutes} min`} />
+        </div>
+
+        <div className="my-16 hairline" />
+
+        <div className="grid gap-x-20 gap-y-16 lg:grid-cols-[1fr_1.05fr]">
+          <div>
+            <div className="eyebrow">The Day</div>
+            <h4 className="mt-4 font-serif text-3xl font-light leading-snug text-[color:var(--ink)]">
+              A considered sequence
+            </h4>
+            <div className="mt-10">
+              <Timeline stops={itinerary.stops} />
+            </div>
+          </div>
+
+          <div className="space-y-14">
+            <div>
+              <div className="eyebrow">Selected stops</div>
+              <div className="mt-6 grid grid-cols-2 gap-5">
+                {places.slice(0, 4).map((s) =>
+                  s.place ? (
+                    <figure key={s.place.id} className="space-y-3">
+                      <div
+                        className="aspect-[4/3] w-full bg-cover bg-center"
+                        style={{ backgroundImage: `url(${s.place.image})` }}
+                      />
+                      <figcaption>
+                        <div className="font-serif text-lg leading-tight text-[color:var(--ink)]">
+                          {s.place.name}
+                        </div>
+                        <div className="eyebrow mt-1.5">{s.place.category}</div>
+                      </figcaption>
+                    </figure>
+                  ) : null
+                )}
               </div>
             </div>
-          ) : null
-        )}
-      </div>
 
-      <div className="mt-6">
-        <Timeline stops={itinerary.stops} />
-      </div>
+            <MapPreview itinerary={itinerary} transportation={transportation} />
 
-      <div className="mt-6">
-        <MapPreview itinerary={itinerary} transportation={transportation} />
-      </div>
-
-      <div className="mt-6 rounded-2xl border border-rosie-100 bg-rosie-50/40 p-4">
-        <div className="text-[10px] uppercase tracking-[0.3em] text-rosie-600">Why Rosie chose this</div>
-        <div className="mt-1 text-sm text-charcoal-600">{itinerary.explanation}</div>
-        {itinerary.warnings.length > 0 && (
-          <div className="mt-2 text-xs text-rosie-600">⚠ {itinerary.warnings.join(' ')}</div>
-        )}
-        <div className="mt-3 flex flex-wrap gap-3 text-xs text-charcoal-500">
-          <span>🔁 Return buffer: {itinerary.returnBufferMinutes} min</span>
-          <span>📍 {places.length} stops</span>
+            <div>
+              <div className="eyebrow">Rosie’s reasoning</div>
+              <p className="mt-5 font-serif text-xl font-light leading-relaxed text-[color:var(--ink)]">
+                {itinerary.explanation}
+              </p>
+              {itinerary.warnings.length > 0 && (
+                <p className="mt-4 text-sm leading-relaxed text-[color:var(--gold)]">
+                  Note · {itinerary.warnings.join(' ')}
+                </p>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
 
-      <div className="mt-6 flex flex-wrap gap-2">
-        <ActionBtn onClick={() => setModal('reserve')} tone="primary">
-          Reserve / Book
-        </ActionBtn>
-        <ActionBtn onClick={() => setModal('frontDesk')}>Send to front desk</ActionBtn>
-        <ActionBtn onClick={() => setModal('save')}>Save itinerary</ActionBtn>
-        <ActionBtn onClick={() => setModal('qr')}>Share QR</ActionBtn>
-        <ActionBtn onClick={() => setModal('maps')}>Open in maps</ActionBtn>
+        <div className="mt-20 hairline" />
+
+        <div className="mt-12 flex flex-wrap items-center gap-x-10 gap-y-4">
+          <ActionBtn onClick={() => setModal('reserve')}>Reserve</ActionBtn>
+          <ActionBtn onClick={() => setModal('frontDesk')}>Send to Front Desk</ActionBtn>
+          <ActionBtn onClick={() => setModal('save')}>Save Itinerary</ActionBtn>
+          <ActionBtn onClick={() => setModal('qr')}>Share QR</ActionBtn>
+          <ActionBtn onClick={() => setModal('maps')}>Open in Maps</ActionBtn>
+        </div>
       </div>
 
       {modal && (
@@ -119,26 +138,23 @@ export default function ItineraryCard({
   );
 }
 
-function ActionBtn({
-  onClick,
-  children,
-  tone
-}: {
-  onClick: () => void;
-  children: React.ReactNode;
-  tone?: 'primary';
-}) {
-  const cls =
-    tone === 'primary'
-      ? 'bg-rosie-500 text-white hover:bg-rosie-600'
-      : 'border border-cream-200 bg-white text-charcoal-600 hover:bg-cream-50';
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="eyebrow">{label}</div>
+      <div className="mt-3 font-serif text-4xl font-light text-[color:var(--ink)]">{value}</div>
+    </div>
+  );
+}
+
+function ActionBtn({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       onClick={(e) => {
         e.stopPropagation();
         onClick();
       }}
-      className={`rounded-full px-4 py-2 text-xs font-medium uppercase tracking-wider transition ${cls}`}
+      className="cta-link-soft"
     >
       {children}
     </button>

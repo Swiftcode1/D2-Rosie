@@ -42,7 +42,7 @@ export default function PlanningPanel({
   };
 
   return (
-    <section className="rounded-3xl border border-cream-200 bg-white p-6 shadow-card">
+    <section className="rounded-3xl border border-cream-200 bg-white p-8 shadow-card sm:p-10">
       <div className="text-xs uppercase tracking-[0.2em] text-gold-500">Planning</div>
       <h3 className="mt-1 font-serif text-2xl text-charcoal-700">Tune your itinerary</h3>
 
@@ -105,7 +105,7 @@ export default function PlanningPanel({
           >
             <option value="relaxed">Relaxed</option>
             <option value="balanced">Balanced</option>
-            <option value="packed">Packed</option>
+            <option value="ambitious">Ambitious</option>
           </select>
         </Field>
         <Field label="Walking tolerance">

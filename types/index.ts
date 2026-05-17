@@ -1,5 +1,5 @@
 export type PriceLevel = 'free' | 'low' | 'medium' | 'premium';
-export type TravelStyle = 'relaxed' | 'balanced' | 'packed';
+export type TravelStyle = 'relaxed' | 'balanced' | 'ambitious';
 export type BudgetPreference = 'low' | 'medium' | 'premium';
 export type Transportation = 'walking' | 'rideshare' | 'driving' | 'hotel shuttle';
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'cafe';

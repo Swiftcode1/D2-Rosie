@@ -34,11 +34,11 @@ export default function HotelHandoffModal({ action, itinerary, profile, onClose 
   }, [action, itinerary]);
 
   const title: Record<HandoffAction, string> = {
-    reserve: 'Reserve / Book stops',
-    frontDesk: 'Front desk concierge request',
-    save: 'Itinerary saved',
-    qr: 'Share itinerary by QR',
-    maps: 'Open in maps'
+    reserve: 'Reserve',
+    frontDesk: 'Front Desk Concierge',
+    save: 'Saved',
+    qr: 'Share by QR',
+    maps: 'Open in Maps'
   };
 
   const stops = itinerary.stops.filter((s) => s.place);
@@ -54,41 +54,39 @@ export default function HotelHandoffModal({ action, itinerary, profile, onClose 
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-charcoal-700/30 backdrop-blur-sm sm:items-center"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-lg overflow-hidden rounded-t-3xl bg-white shadow-soft sm:rounded-3xl"
+        className="relative w-full max-w-lg bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-rosie-300 via-gold-300 to-rosie-300" />
-        <div className="flex items-start justify-between p-6">
+        <div className="flex items-start justify-between border-b border-[color:var(--line)] px-10 py-7">
           <div>
-            <div className="text-xs uppercase tracking-[0.25em] text-gold-500">Rosewood</div>
-            <h3 className="mt-1 font-serif text-2xl text-charcoal-700">{title[action]}</h3>
+            <div className="eyebrow">Rosewood Sand Hill</div>
+            <h3 className="mt-2 font-serif text-3xl font-light text-[color:var(--ink)]">
+              {title[action]}
+            </h3>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-full border border-cream-200 px-3 py-1 text-xs text-charcoal-500 hover:bg-cream-50"
-          >
+          <button onClick={onClose} className="cta-link-soft">
             Close
           </button>
         </div>
 
-        <div className="px-6 pb-6">
+        <div className="px-10 py-8">
           {action === 'reserve' && (
-            <div className="space-y-3 text-sm text-charcoal-600">
-              <p>
-                Rosie will request bookings for the stops below. The front desk will confirm
+            <div className="space-y-6">
+              <p className="text-sm font-light leading-relaxed text-[color:var(--ink-soft)]">
+                Rosie will request reservations for the stops below. The front desk will confirm
                 availability and reply to your room.
               </p>
-              <ul className="space-y-1.5 rounded-2xl border border-cream-200 bg-cream-50 p-3">
+              <ul className="divide-y divide-[color:var(--line)] border-y border-[color:var(--line)]">
                 {stops.map((s, i) =>
                   s.place ? (
-                    <li key={i} className="flex justify-between">
-                      <span>{s.place.name}</span>
-                      <span className="text-charcoal-400">
-                        {s.place.bookingAvailable ? 'Reservation requested' : 'Walk-in'}
+                    <li key={i} className="flex items-center justify-between py-4">
+                      <span className="font-serif text-lg text-[color:var(--ink)]">{s.place.name}</span>
+                      <span className="text-[11px] uppercase tracking-[0.2em] text-[color:var(--ink-faint)]">
+                        {s.place.bookingAvailable ? 'Reservation' : 'Walk-in'}
                       </span>
                     </li>
                   ) : null
@@ -96,85 +94,83 @@ export default function HotelHandoffModal({ action, itinerary, profile, onClose 
               </ul>
               <button
                 onClick={() => setConfirmed(true)}
-                className="w-full rounded-full bg-rosie-500 px-5 py-3 text-sm font-medium uppercase tracking-wider text-white hover:bg-rosie-600"
+                className="cta-link"
               >
-                {confirmed ? '✓ Reservation request sent' : 'Send reservation request'}
+                {confirmed ? 'Reservation Request Sent' : 'Send Reservation Request'}
               </button>
             </div>
           )}
 
           {action === 'frontDesk' && (
-            <div className="space-y-4 text-sm text-charcoal-600">
-              <div className="rounded-2xl border border-rosie-100 bg-rosie-50/40 p-4">
-                <div className="text-[11px] uppercase tracking-[0.25em] text-rosie-600">
-                  Concierge request
-                </div>
-                <div className="mt-2 grid grid-cols-2 gap-2 text-charcoal-600">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wider text-charcoal-400">Guest</div>
-                    <div>{profile.guestName || 'Guest'}</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wider text-charcoal-400">Room</div>
-                    <div>{profile.roomNumber || '—'}</div>
-                  </div>
-                  <div className="col-span-2">
-                    <div className="text-[10px] uppercase tracking-wider text-charcoal-400">Itinerary</div>
-                    <div>{itinerary.title} · {stops.length} stops · ${itinerary.totalCost}</div>
-                  </div>
-                  <div className="col-span-2">
-                    <div className="text-[10px] uppercase tracking-wider text-charcoal-400">Requested help</div>
-                    <div>
-                      Confirm reservations where available, arrange rideshare/shuttle, and
-                      print a paper copy for the guest.
-                    </div>
-                  </div>
+            <div className="space-y-6">
+              <div className="border border-[color:var(--line)] p-6">
+                <div className="eyebrow">Concierge Request</div>
+                <div className="mt-4 space-y-3">
+                  <Row label="Guest" value={profile.guestName || 'Guest'} />
+                  <Row label="Room" value={profile.roomNumber || '—'} />
+                  <Row
+                    label="Itinerary"
+                    value={`${itinerary.title} · ${stops.length} stops · $${itinerary.totalCost}`}
+                  />
+                  <Row
+                    label="Requested help"
+                    value="Confirm reservations where available, arrange rideshare or shuttle, and print a paper copy for the guest."
+                  />
                 </div>
               </div>
-              <button
-                onClick={() => setConfirmed(true)}
-                className="w-full rounded-full bg-charcoal-700 px-5 py-3 text-sm font-medium uppercase tracking-wider text-white hover:bg-charcoal-600"
-              >
-                {confirmed ? '✓ Sent to front desk' : 'Send to front desk'}
+              <button onClick={() => setConfirmed(true)} className="cta-link">
+                {confirmed ? 'Sent to Front Desk' : 'Send to Front Desk'}
               </button>
             </div>
           )}
 
           {action === 'save' && (
-            <div className="space-y-3 text-sm text-charcoal-600">
-              <p>Saved to this guest profile and added to itinerary history.</p>
-              <div className="rounded-2xl border border-cream-200 bg-cream-50 p-4 text-xs text-charcoal-500">
-                {itinerary.title} · {stops.length} stops · ${itinerary.totalCost} · {Math.floor(itinerary.totalMinutes / 60)}h
+            <div className="space-y-4 text-sm font-light leading-relaxed text-[color:var(--ink-soft)]">
+              <p>Saved to your guest profile and added to itinerary history.</p>
+              <div className="border border-[color:var(--line)] p-4 text-[color:var(--ink)]">
+                {itinerary.title} · {stops.length} stops · ${itinerary.totalCost} ·{' '}
+                {Math.floor(itinerary.totalMinutes / 60)}h
               </div>
             </div>
           )}
 
           {action === 'qr' && (
-            <div className="flex flex-col items-center gap-3 text-sm text-charcoal-600">
-              <div className="rounded-2xl border border-cream-200 bg-white p-4 shadow-sm">
-                <QRCodeSVG value={mapsUrl} size={180} fgColor="#7a3326" />
+            <div className="flex flex-col items-center gap-5">
+              <div className="border border-[color:var(--line)] bg-white p-5">
+                <QRCodeSVG value={mapsUrl} size={180} fgColor="#1a1a1a" />
               </div>
-              <p className="text-center text-xs text-charcoal-400">
+              <p className="text-center text-xs font-light text-[color:var(--ink-soft)]">
                 Scan to open this itinerary in maps on the guest’s phone.
               </p>
             </div>
           )}
 
           {action === 'maps' && (
-            <div className="space-y-3 text-sm text-charcoal-600">
-              <p>Opens this multi-stop route in Google Maps.</p>
+            <div className="space-y-4">
+              <p className="text-sm font-light leading-relaxed text-[color:var(--ink-soft)]">
+                Opens this multi-stop route in Google Maps.
+              </p>
               <a
                 href={mapsUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex w-full items-center justify-center rounded-full bg-rosie-500 px-5 py-3 text-sm font-medium uppercase tracking-wider text-white hover:bg-rosie-600"
+                className="cta-link"
               >
-                Open route in Google Maps
+                Open Route in Google Maps
               </a>
             </div>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid grid-cols-[120px_1fr] gap-4">
+      <div className="eyebrow">{label}</div>
+      <div className="text-sm font-light text-[color:var(--ink)]">{value}</div>
     </div>
   );
 }

@@ -32,7 +32,7 @@ export default function GuestProfileCard({ profile, onChange }: Props) {
   };
 
   return (
-    <section className="rounded-3xl border border-cream-200 bg-white p-6 shadow-card">
+    <section className="rounded-3xl border border-cream-200 bg-white p-8 shadow-card sm:p-10">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-xs uppercase tracking-[0.2em] text-gold-500">Guest profile</div>
@@ -90,7 +90,7 @@ export default function GuestProfileCard({ profile, onChange }: Props) {
           >
             <option value="relaxed">Relaxed</option>
             <option value="balanced">Balanced</option>
-            <option value="packed">Packed</option>
+            <option value="ambitious">Ambitious</option>
           </select>
         </Field>
         <Field label="Budget preference">
